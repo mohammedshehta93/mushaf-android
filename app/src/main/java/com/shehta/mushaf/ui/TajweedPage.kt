@@ -2,7 +2,13 @@ package com.shehta.mushaf.ui
 
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -77,43 +83,87 @@ fun TajweedPage(
     val tap by rememberUpdatedState(onTap)
     val longPress by rememberUpdatedState(onLongPress)
 
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        blocks.forEachIndexed { bi, b -> key(bi) {
-            when (b) {
-                is TBlock.Header -> Box(
-                    Modifier.fillMaxWidth().padding(vertical = 6.dp)
-                        .border(2.dp, colors.frame, RoundedCornerShape(50))
-                        .padding(vertical = 6.dp),
-                    contentAlignment = Alignment.Center,
-                ) { Text("سورة ${Quran.surahs[b.s - 1].name}", fontFamily = hafsFamily, fontSize = (fontSp * 0.85f).sp, color = colors.ink) }
-                is TBlock.Basmala -> Text(
-                    "بِسۡمِ ٱللَّهِ ٱلرَّحۡمَٰنِ ٱلرَّحِيمِ", fontFamily = hafsFamily, fontSize = fontSp.sp, color = colors.ink,
-                    modifier = Modifier.padding(vertical = 4.dp),
-                )
-                is TBlock.Ayahs -> {
-                    val para = buildPara(b.list, colors, decor)
-                    var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
-                    fun ayahAt(o: androidx.compose.ui.geometry.Offset): IntArray? {
-                        val off = layout?.getOffsetForPosition(o) ?: return null
-                        return para.ranges.firstOrNull { off >= it.first && off < it.second }?.third
+    // The whole page must be visible at once: find the largest font size whose layout fits the screen.
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val density = LocalDensity.current
+        val measurer = rememberTextMeasurer()
+        val padH = with(density) { 14.dp.roundToPx() }
+        val padV = with(density) { 8.dp.roundToPx() }
+        val wPx = (constraints.maxWidth - 2 * padH).coerceAtLeast(100)
+        val hPx = (constraints.maxHeight - 2 * padV).coerceAtLeast(100)
+        val fs = remember(page.number, wPx, hPx, fontSp) {
+            val headerExtra = with(density) { 22.dp.roundToPx() }
+            val basmalaExtra = with(density) { 6.dp.roundToPx() }
+            fun total(size: Float): Int {
+                var h = 0
+                for (b in blocks) {
+                    h += when (b) {
+                        is TBlock.Header -> measurer.measure(
+                            "سورة ${Quran.surahs[b.s - 1].name}",
+                            TextStyle(fontFamily = hafsFamily, fontSize = (size * 0.85f).sp),
+                            constraints = Constraints(maxWidth = wPx),
+                        ).size.height + headerExtra
+                        is TBlock.Basmala -> measurer.measure(
+                            BASMALA, TextStyle(fontFamily = hafsFamily, fontSize = size.sp), constraints = Constraints(maxWidth = wPx),
+                        ).size.height + basmalaExtra
+                        is TBlock.Ayahs -> measurer.measure(
+                            buildPara(b.list, colors, PageDecor()).text,
+                            TextStyle(fontFamily = hafsFamily, fontSize = size.sp, lineHeight = (size * LINE).sp, textAlign = TextAlign.Justify),
+                            constraints = Constraints(maxWidth = wPx),
+                        ).size.height
                     }
-                    Text(
-                        para.text,
-                        fontFamily = hafsFamily, fontSize = fontSp.sp, lineHeight = (fontSp * 2f).sp,
-                        color = colors.ink, textAlign = TextAlign.Justify,
-                        onTextLayout = { layout = it },
-                        modifier = Modifier.fillMaxWidth().pointerInput(para) {
-                            detectTapGestures(onTap = { tap(ayahAt(it)) }, onLongPress = { longPress(ayahAt(it)) })
-                        },
-                    )
                 }
+                return h
             }
-        } }
+            var lo = 10f; var hi = fontSp.coerceIn(20f, 44f)
+            if (total(hi) <= hPx) hi else {
+                repeat(10) { val mid = (lo + hi) / 2; if (total(mid) <= hPx) lo = mid else hi = mid }
+                lo
+            }
+        }
+
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 14.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            blocks.forEachIndexed { bi, b -> key(bi) {
+                when (b) {
+                    is TBlock.Header -> Box(
+                        Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                            .border(2.dp, colors.frame, RoundedCornerShape(50))
+                            .padding(vertical = 3.dp),
+                        contentAlignment = Alignment.Center,
+                    ) { Text("سورة ${Quran.surahs[b.s - 1].name}", fontFamily = hafsFamily, fontSize = (fs * 0.85f).sp, color = colors.ink) }
+                    is TBlock.Basmala -> Text(
+                        BASMALA, fontFamily = hafsFamily, fontSize = fs.sp, color = colors.ink,
+                        modifier = Modifier.padding(vertical = 3.dp),
+                    )
+                    is TBlock.Ayahs -> {
+                        val para = buildPara(b.list, colors, decor)
+                        var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
+                        fun ayahAt(o: androidx.compose.ui.geometry.Offset): IntArray? {
+                            val off = layout?.getOffsetForPosition(o) ?: return null
+                            return para.ranges.firstOrNull { off >= it.first && off < it.second }?.third
+                        }
+                        Text(
+                            para.text,
+                            fontFamily = hafsFamily, fontSize = fs.sp, lineHeight = (fs * LINE).sp,
+                            color = colors.ink, textAlign = TextAlign.Justify,
+                            onTextLayout = { layout = it },
+                            modifier = Modifier.fillMaxWidth().pointerInput(para) {
+                                detectTapGestures(onTap = { tap(ayahAt(it)) }, onLongPress = { longPress(ayahAt(it)) })
+                            },
+                        )
+                    }
+                }
+            } }
+        }
     }
 }
+
+private const val LINE = 1.8f
+private const val BASMALA = "بِسۡمِ ٱللَّهِ ٱلرَّحۡمَٰنِ ٱلرَّحِيمِ"
 
 private fun buildPara(list: List<IntArray>, c: MushafColors, decor: PageDecor): Para {
     val ranges = ArrayList<Triple<Int, Int, IntArray>>()

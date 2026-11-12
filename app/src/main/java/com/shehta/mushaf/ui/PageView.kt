@@ -42,7 +42,7 @@ class Frame(val kind: Int, val surah: Int, val rect: RectF)
 class Laid(val glyphs: List<Placed>, val frames: List<Frame>, val size: Float, val height: Float, val lineH: Float)
 
 /** What is currently selected on a page: an ayah (long press) and/or a gharib phrase (tap). w = pressed word. */
-data class Selection(val s: Int, val a: Int, val gharib: Int = -1, val w: Int = 0)
+data class Selection(val s: Int, val a: Int, val gharib: Int = -1, val w: Int = 0, val wordOnly: Boolean = false)
 
 /** Memorisation view: the first [revealed] words of the page are visible, the rest are hidden. */
 class HifzView(val revealed: Int, val showFirstWords: Boolean, val mistakes: Map<String, Int>)
@@ -63,6 +63,9 @@ fun Page.wordKeys(): List<String> {
 }
 
 private const val REF = 100f
+
+/** Widest natural line of all 604 QCF V1 page fonts at size 100 (16.2964 em, measured from the font files). */
+private const val MAX_LINE_REF = 1630f
 
 /**
  * Lays out one Mushaf page.
@@ -89,7 +92,10 @@ fun layoutPage(page: Page, font: Typeface, w: Float, h: Float, mode: ViewMode, l
 
         var maxNat = 1f
         for (l in page.lines) if (l is Line.Text) maxNat = max(maxNat, l.tokens.sumOf { refWidth(it).toDouble() }.toFloat())
-        val size = min(REF * contentW / maxNat, lineH * 0.80f)
+        // One font size for every page (like the printed Mushaf): fitted to the widest line in the whole
+        // Mushaf, so narrower pages are justified instead of being enlarged.
+        val uniform = REF * innerW / MAX_LINE_REF
+        val size = min(min(uniform, REF * contentW / maxNat), lineH * 0.80f)
         paint.textSize = size
         val fm = paint.fontMetrics
         val startY = padTop + if (special) (innerH - rows * lineH) / 2 else 0f
@@ -286,7 +292,8 @@ private fun DrawScope.drawPage(
     // 1) selection backgrounds, one rounded rect per line segment
     if (sel != null) {
         val bg = Paint(Paint.ANTI_ALIAS_FLAG)
-        val rows = laid.glyphs.filter { it.tok.s == sel.s && it.tok.a == sel.a }.groupBy { it.top }
+        // a tapped "difficult word" highlights only that word; a long press highlights the whole ayah
+        val rows: Map<Float, List<Placed>> = if (sel.wordOnly) emptyMap() else laid.glyphs.filter { it.tok.s == sel.s && it.tok.a == sel.a }.groupBy { it.top }
         bg.color = c.ayahHighlight.toArgb()
         for ((_, gs) in rows) {
             val l = gs.minOf { it.left }; val r = gs.maxOf { it.left + it.width }

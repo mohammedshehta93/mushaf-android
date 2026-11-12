@@ -16,6 +16,8 @@ import com.shehta.mushaf.audio.AudioEngine
 import com.shehta.mushaf.data.Prefs
 import com.shehta.mushaf.data.Quran
 import com.shehta.mushaf.data.Tafsirs
+import com.shehta.mushaf.data.MuslimPrefs
+import com.shehta.mushaf.reminder.PrayerAlarms
 import com.shehta.mushaf.reminder.Reminder
 import com.shehta.mushaf.ui.App
 import com.shehta.mushaf.ui.MushafTheme
@@ -33,10 +35,12 @@ object KeyBridge {
 /** A page requested from outside (widget, notification). The reader jumps there and clears it. */
 object Launch {
     var page by mutableStateOf(0)
+    var screen by mutableStateOf("")
 }
 
 class MainActivity : ComponentActivity() {
     private lateinit var prefs: Prefs
+    private lateinit var muslim: MuslimPrefs
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -52,12 +56,15 @@ class MainActivity : ComponentActivity() {
         Updater.init(this)
         AudioEngine.init(this)
         prefs = Prefs(this)
+        muslim = MuslimPrefs(this)
         Reminder.schedule(this, prefs)
+        PrayerAlarms.scheduleAll(this)
         handle(intent)
         thread(name = "preload", priority = Thread.MIN_PRIORITY) { Quran.preload() }
         setContent {
             val p = remember { prefs }
-            MushafTheme(p.theme) { App(p) }
+            val m = remember { muslim }
+            MushafTheme(p.theme) { App(p, m) }
         }
     }
 
@@ -69,6 +76,8 @@ class MainActivity : ComponentActivity() {
     private fun handle(intent: Intent?) {
         val p = intent?.getIntExtra(EXTRA_PAGE, 0) ?: 0
         if (p in 1..Quran.PAGES) Launch.page = p
+        val sc = intent?.getStringExtra(EXTRA_SCREEN) ?: ""
+        if (sc.isNotEmpty()) Launch.screen = sc
     }
 
     override fun onStop() {
@@ -86,5 +95,8 @@ class MainActivity : ComponentActivity() {
         return super.onKeyDown(keyCode, event)
     }
 
-    companion object { const val EXTRA_PAGE = "page" }
+    companion object {
+        const val EXTRA_PAGE = "page"
+        const val EXTRA_SCREEN = "screen"
+    }
 }

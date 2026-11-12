@@ -320,7 +320,7 @@ def main():
     src_text = {k: " ".join(v) for k, v in ayah_words.items()}
     word_counts = {k: len(v) for k, v in ayah_words.items()}
     import extras_prep
-    extras_prep.build_all(D, OUT, src_text, word_counts)
+    extras_prep.build_all(D, OUT, src_text, word_counts, [x["ayahs"] for x in surahs])
     for n in range(1, 605):
         shutil.copy(f"{D}/fonts/QCF_P{n:03d}.TTF", f"{OUT}/fonts/p{n}.ttf")
     shutil.copy(f"{D}/fonts/QCF_BSML.TTF", f"{OUT}/fonts/bsml.ttf")

@@ -95,7 +95,7 @@ fun SettingsSheet(prefs: Prefs, onDismiss: () -> Unit) {
                 Slider(value = prefs.largeFontSize, onValueChange = { prefs.updateLargeFont(it) }, valueRange = 22f..56f)
             }
             if (prefs.mode == ViewMode.TAJWEED) {
-                Label("حجم خط التجويد: ${prefs.tajweedFontSize.toInt()}")
+                Label("أقصى حجم لخط التجويد: ${prefs.tajweedFontSize.toInt()}")
                 Slider(value = prefs.tajweedFontSize, onValueChange = { prefs.updateTajweedFont(it) }, valueRange = 18f..48f)
             }
 

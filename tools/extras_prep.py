@@ -15,9 +15,7 @@ RECITERS = [
     ("Husary_Muallim_128kbps", "الحصري (المصحف المعلّم)"),
     ("Minshawy_Murattal_128kbps", "محمد صديق المنشاوي"),
     ("Abdul_Basit_Murattal_192kbps", "عبد الباسط عبد الصمد (مرتّل)"),
-    ("Alafasy_128kbps", "مشاري راشد العفاسي"),
     ("Maher_AlMuaiqly_64kbps", "ماهر المعيقلي"),
-    ("Abdurrahmaan_As-Sudais_192kbps", "عبد الرحمن السديس"),
     ("Ghamadi_40kbps", "سعد الغامدي"),
 ]
 
@@ -198,8 +196,62 @@ def build_timings(D, OUT):
               open(f"{OUT}/reciters.json", "w", encoding="utf-8"), ensure_ascii=False)
 
 
-def build_all(D, OUT, src_text, word_counts):
+def build_all(D, OUT, src_text, word_counts, ayah_counts=None):
     build_text_and_tajweed(D, OUT, src_text)
+    if ayah_counts: build_muslim(D, OUT, ayah_counts)
     build_morph(D, OUT, word_counts)
     build_fiqh(D, OUT)
     build_timings(D, OUT)
+
+
+# ------------------------------------------------------------------ daily-life Muslim tools data
+AZKAR = RAW + "/osamayy/azkar-db/master/azkar.json"                       # Hisn al-Muslim
+RIYAD = RAW + "/AhmedBaset/hadith-json/v1.2.0/db/by_book/other_books/riyad_assalihin.json"
+NAWAWI = RAW + "/AhmedBaset/hadith-json/v1.2.0/db/by_book/forties/nawawi40.json"
+NAMES = RAW + "/KabDeveloper/99-Names-Of-Allah/main/99_Names_Of_Allah.json"
+
+
+def build_muslim(D, OUT, ayah_counts):
+    os.makedirs(f"{OUT}/muslim", exist_ok=True)
+    # Azkar (Hisn al-Muslim): keep the original order of categories and items
+    a = json.load(open(fetch(AZKAR, f"{D}/azkar.json"), encoding="utf-8"))
+    cols = [c["name"] for c in a["columns"]]
+    cats = {}
+    for r in a["rows"]:
+        row = dict(zip(cols, r))
+        cat = (row["category"] or "").strip()
+        z = (row["zekr"] or "").strip()
+        if not cat or not z: continue
+        cats.setdefault(cat, []).append({"z": z, "d": (row.get("description") or "").strip(),
+                                         "c": int(row.get("count") or 1) or 1, "r": (row.get("reference") or "").strip()})
+    if len(cats) < 100 or sum(len(v) for v in cats.values()) < 300: raise SystemExit("ERROR: azkar incomplete")
+    json.dump([{"t": k, "i": v} for k, v in cats.items()], open(f"{OUT}/muslim/azkar.json", "w", encoding="utf-8"),
+              ensure_ascii=False, separators=(",", ":"))
+
+    # Hadith of the day: all of the Nawawi forty + the shorter hadiths of Riyad as-Salihin
+    daily = []
+    nw = json.load(open(fetch(NAWAWI, f"{D}/nawawi40.json"), encoding="utf-8"))
+    for h in nw["hadiths"]:
+        daily.append({"t": h["arabic"].replace(RLM, "").strip(), "s": f"الأربعون النووية ({h['idInBook']})"})
+    rs = json.load(open(fetch(RIYAD, f"{D}/riyad.json"), encoding="utf-8"))
+    chap = {c["id"]: c["arabic"] for c in rs["chapters"]}
+    for h in rs["hadiths"]:
+        t = re.sub(r"\s+", " ", h["arabic"].replace(RLM, "")).strip()
+        if t.startswith(("وعنه", "وعنها", "وفي رواية", "وفى رواية", "وله", "وفي لفظ")): continue   # needs the previous hadith
+        if 60 <= len(t) <= 450 and ("صلى الله عليه وسلم" in t or "ﷺ" in t):
+            daily.append({"t": t, "s": f"رياض الصالحين ({h['idInBook']}) — {chap.get(h['chapterId'], '')}".strip(" —")})
+    if len(daily) < 300: raise SystemExit("ERROR: daily hadith list too short")
+    json.dump(daily, open(f"{OUT}/muslim/hadith_daily.json", "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
+
+    # The Beautiful Names with the ayahs they appear in
+    n = json.load(open(fetch(NAMES, f"{D}/names99.json"), encoding="utf-8"))["data"]
+    out = []
+    for x in n:
+        refs = []
+        for s, ay in re.findall(r"\((\d+)\s*:\s*(\d+)\)", x.get("found", "")):
+            s, ay = int(s), int(ay)
+            if 1 <= s <= 114 and 1 <= ay <= ayah_counts[s - 1]: refs.append([s, ay])
+        out.append({"n": x["name"].strip(), "r": refs})
+    if len(out) != 99: raise SystemExit("ERROR: expected 99 names")
+    json.dump(out, open(f"{OUT}/muslim/names.json", "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
+    print("muslim data: azkar categories", len(cats), "· daily hadith", len(daily), "· names", len(out))

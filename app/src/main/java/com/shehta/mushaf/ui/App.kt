@@ -118,6 +118,10 @@ import com.shehta.mushaf.data.Line
 import com.shehta.mushaf.data.Page
 import com.shehta.mushaf.data.PaperTheme
 import com.shehta.mushaf.data.Prefs
+import com.shehta.mushaf.data.MuslimData
+import com.shehta.mushaf.data.MuslimPrefs
+import com.shehta.mushaf.data.PrayerCalc
+import com.shehta.mushaf.reminder.PrayerAlarms
 import com.shehta.mushaf.data.Quran
 import com.shehta.mushaf.data.TajweedRules
 import com.shehta.mushaf.data.ViewMode
@@ -136,6 +140,15 @@ sealed class Overlay {
     object Hifz : Overlay()
     object Khatma : Overlay()
     object Fiqh : Overlay()
+    object Home : Overlay()
+    object Qibla : Overlay()
+    object Tasbih : Overlay()
+    object Hijri : Overlay()
+    object Ramadan : Overlay()
+    object Zakat : Overlay()
+    object Names : Overlay()
+    class Prayer(val tab: Int = 0) : Overlay()
+    class Azkar(val start: String? = null) : Overlay()
     class Tafsir(val s: Int, val a: Int) : Overlay()
     class Root(val root: String) : Overlay()
 }
@@ -144,7 +157,7 @@ val hafsFamily: FontFamily by lazy { FontFamily(Quran.hafsFont) }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun App(prefs: Prefs) {
+fun App(prefs: Prefs, mp: MuslimPrefs) {
     val colors = mushafColors(prefs.theme)
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -163,6 +176,7 @@ fun App(prefs: Prefs) {
     var showSettings by remember { mutableStateOf(false) }
     var showMore by remember { mutableStateOf(false) }
     var showView by remember { mutableStateOf(false) }
+    var showShare by remember { mutableStateOf(false) }
     var hifzOn by remember { mutableStateOf(false) }
     val revealed = remember { mutableStateMapOf<Int, Int>() }
 
@@ -179,8 +193,16 @@ fun App(prefs: Prefs) {
         selection = sel; meaning = null; overlay = Overlay.None
     }
 
-    // a page requested by a widget or the reminder notification
+    // a page or screen requested by a widget or a notification
     LaunchedEffect(Launch.page) { if (Launch.page > 0) { goTo(Launch.page); Launch.page = 0 } }
+    LaunchedEffect(Launch.screen) {
+        when (Launch.screen) {
+            "prayer" -> overlay = Overlay.Prayer()
+            "azkar_morning" -> overlay = Overlay.Azkar(MuslimData.MORNING)
+            "azkar_evening" -> overlay = Overlay.Azkar(MuslimData.EVENING)
+        }
+        Launch.screen = ""
+    }
 
     // remember the reading position as soon as a page settles; count it as read after 20 seconds
     val settled = pageOfIndex(pager.settledPage)
@@ -285,7 +307,7 @@ fun App(prefs: Prefs) {
                     hifzOn -> revealed[n] = ((revealed[n] ?: 0) + 1).coerceAtMost(p.wordKeys().size)
                     t != null && t.g >= 0 && t.colored && prefs.colorGharib && t.w != 0 -> {
                         meaning = Quran.gharib(t.g)
-                        selection = Selection(t.s, t.a, t.g, t.w)
+                        selection = Selection(t.s, t.a, t.g, t.w, wordOnly = true)
                         barsVisible = false
                     }
                     meaning != null || selection != null -> { meaning = null; selection = null }
@@ -334,6 +356,11 @@ fun App(prefs: Prefs) {
                     Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
                         Text("سورة ${surah.name}", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                         Text("الجزء ${Quran.juzOfPage(current).ar()} · الحزب ${((rub.n - 1) / 4 + 1).ar()}${quarterLabel(rub.n)}", fontSize = 13.sp, color = colors.onBar.copy(alpha = 0.8f))
+                    }
+                    mp.next()?.let { (i, at) ->
+                        Text("${PrayerCalc.NAMES[i]} ${PrayerCalc.format(mp.times()?.list()?.get(i) ?: Double.NaN).substringBefore(" ")}",
+                            fontSize = 12.sp, modifier = Modifier.background(colors.onBar.copy(alpha = 0.15f), RoundedCornerShape(10.dp)).padding(horizontal = 8.dp, vertical = 2.dp))
+                        Spacer(Modifier.width(6.dp))
                     }
                     if (pageHasSajda(current)) {
                         Text("۩ سجدة", fontSize = 13.sp, modifier = Modifier.background(colors.onBar.copy(alpha = 0.15f), RoundedCornerShape(10.dp)).padding(horizontal = 8.dp, vertical = 2.dp))
@@ -428,7 +455,7 @@ fun App(prefs: Prefs) {
                                 if (prefs.mode == ViewMode.TAJWEED) prefs.updateMode(ViewMode.PAGE)
                             }
                             BarButton(Icons.Filled.ViewDay, "العرض") { showView = true }
-                            BarButton(Icons.Filled.MoreHoriz, "المزيد") { showMore = true }
+                            BarButton(Icons.Filled.MoreHoriz, "المزيد") { overlay = Overlay.Home; barsVisible = false }
                         }
                     }
                 }
@@ -457,6 +484,40 @@ fun App(prefs: Prefs) {
             Overlay.Fiqh -> FiqhScreen(prefs, onBack = { overlay = Overlay.None })
             is Overlay.Tafsir -> TafsirScreen(o.s, o.a, prefs, onBack = { overlay = Overlay.None }, onGo = { s, a -> goTo(Quran.pageOf(s, a), Selection(s, a)) })
             is Overlay.Root -> RootScreen(o.root, prefs, onBack = { overlay = Overlay.None }, onGo = { p, s -> goTo(p, s) })
+            Overlay.Home -> HomeScreen(mp, colors, onBack = { overlay = Overlay.None }, onPick = { id ->
+                when {
+                    id.startsWith("azkar:") -> overlay = Overlay.Azkar(id.removePrefix("azkar:"))
+                    else -> when (id) {
+                        "prayer" -> overlay = Overlay.Prayer()
+                        "tracker" -> overlay = Overlay.Prayer(1)
+                        "qibla" -> overlay = Overlay.Qibla
+                        "azkar" -> overlay = Overlay.Azkar()
+                        "tasbih" -> overlay = Overlay.Tasbih
+                        "hijri" -> overlay = Overlay.Hijri
+                        "ramadan" -> overlay = Overlay.Ramadan
+                        "zakat" -> overlay = Overlay.Zakat
+                        "names" -> overlay = Overlay.Names
+                        "kahf" -> goTo(PrayerAlarms.KAHF_PAGE)
+                        "search" -> overlay = Overlay.Search
+                        "marks" -> { IndexTabs.request = 3; overlay = Overlay.Index }
+                        "notes" -> { IndexTabs.request = 4; overlay = Overlay.Index }
+                        "khatma" -> overlay = Overlay.Khatma
+                        "hifz" -> overlay = Overlay.Hifz
+                        "fiqh" -> overlay = Overlay.Fiqh
+                        "tafsir" -> { val fa = Quran.firstAyah(current); overlay = Overlay.Tafsir(fa[0], fa[1]) }
+                        "share" -> showShare = true
+                        "settings" -> showSettings = true
+                    }
+                }
+            })
+            is Overlay.Prayer -> PrayerScreen(mp, colors, onBack = { overlay = Overlay.Home }, startTab = o.tab)
+            Overlay.Qibla -> QiblaScreen(mp, colors, onBack = { overlay = Overlay.Home })
+            is Overlay.Azkar -> AzkarScreen(mp, colors, o.start, onBack = { overlay = Overlay.Home })
+            Overlay.Tasbih -> TasbihScreen(mp, colors, onBack = { overlay = Overlay.Home })
+            Overlay.Hijri -> HijriScreen(mp, colors, onBack = { overlay = Overlay.Home })
+            Overlay.Ramadan -> RamadanScreen(mp, prefs, colors, onBack = { overlay = Overlay.Home }, onKhatma = { overlay = Overlay.Khatma })
+            Overlay.Zakat -> ZakatScreen(mp, colors, onBack = { overlay = Overlay.Home })
+            Overlay.Names -> NamesScreen(colors, onBack = { overlay = Overlay.Home }, onGo = { s, a -> goTo(Quran.pageOf(s, a), Selection(s, a)) })
             Overlay.None -> {}
         }
     }
@@ -490,6 +551,7 @@ fun App(prefs: Prefs) {
     playerFor?.let { x -> PlayerSheet(prefs, x[0], x[1], onDismiss = { playerFor = null }) }
     if (showSettings) SettingsSheet(prefs, onDismiss = { showSettings = false })
     if (showView) ViewSheet(prefs, colors, onDismiss = { showView = false })
+    if (showShare) ShareAppSheet(onDismiss = { showShare = false })
     if (showMore) MoreSheet(
         onDismiss = { showMore = false },
         onPick = { what ->
@@ -503,6 +565,7 @@ fun App(prefs: Prefs) {
                 "fiqh" -> overlay = Overlay.Fiqh
                 "tafsir" -> { val fa = Quran.firstAyah(current); overlay = Overlay.Tafsir(fa[0], fa[1]) }
                 "settings" -> showSettings = true
+                "share" -> showShare = true
             }
         },
     )
@@ -540,6 +603,7 @@ private fun MoreSheet(onDismiss: () -> Unit, onPick: (String) -> Unit) {
         Triple("fiqh", Icons.Filled.Gavel, "تعلّم الفقه"),
         Triple("marks", Icons.Filled.Bookmarks, "العلامات"),
         Triple("notes", Icons.Filled.EditNote, "الملاحظات"),
+        Triple("share", Icons.Filled.Share, "شارك التطبيق"),
         Triple("settings", Icons.Filled.Settings, "الإعدادات"),
     )
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -586,7 +650,7 @@ private fun ViewSheet(prefs: Prefs, c: MushafColors, onDismiss: () -> Unit) {
                     Slider(value = prefs.largeFontSize, onValueChange = { prefs.updateLargeFont(it) }, valueRange = 22f..56f)
                 }
                 ViewMode.TAJWEED -> {
-                    Text("حجم الخط: ${prefs.tajweedFontSize.toInt()}", modifier = Modifier.padding(top = 12.dp))
+                    Text("أقصى حجم للخط (الصفحة تُعرض كاملة دائمًا): ${prefs.tajweedFontSize.toInt()}", modifier = Modifier.padding(top = 12.dp))
                     Slider(value = prefs.tajweedFontSize, onValueChange = { prefs.updateTajweedFont(it) }, valueRange = 18f..48f)
                 }
                 else -> {}

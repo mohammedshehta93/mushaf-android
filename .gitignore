@@ -1,0 +1,9 @@
+.gradle/
+build/
+local.properties
+*.jks
+*.keystore
+/app/src/main/assets/quran/
+/.data-cache/
+.idea/
+*.iml

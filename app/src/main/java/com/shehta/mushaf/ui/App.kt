@@ -147,6 +147,10 @@ sealed class Overlay {
     object Ramadan : Overlay()
     object Zakat : Overlay()
     object Names : Overlay()
+    class Listen(val tab: Int = 0, val query: String? = null, val back: Overlay = Home) : Overlay()
+    object Sheikhs : Overlay()
+    object Poems : Overlay()
+    object TajweedCourse : Overlay()
     class Prayer(val tab: Int = 0) : Overlay()
     class Azkar(val start: String? = null) : Overlay()
     class Tafsir(val s: Int, val a: Int) : Overlay()
@@ -166,6 +170,7 @@ fun App(prefs: Prefs, mp: MuslimPrefs) {
     val spread = config.screenWidthDp > config.screenHeightDp && prefs.twoPagesLandscape && prefs.mode == ViewMode.PAGE
 
     var overlay by remember { mutableStateOf<Overlay>(Overlay.None) }
+    val listenPrefs = remember { com.shehta.mushaf.data.ListenPrefs(context) }
     var barsVisible by remember { mutableStateOf(false) }
     var selection by remember { mutableStateOf<Selection?>(null) }
     var meaning by remember { mutableStateOf<Gharib?>(null) }
@@ -296,6 +301,7 @@ fun App(prefs: Prefs, mp: MuslimPrefs) {
             mode = prefs.mode,
             largeFontSp = prefs.largeFontSize,
             colors = colors,
+            fontStep = prefs.pageFontStep,
             colorGharib = prefs.colorGharib && !hifzOn,
             showPageNumber = prefs.showPageNumber,
             bookmarked = prefs.isBookmarked(n),
@@ -381,7 +387,7 @@ fun App(prefs: Prefs, mp: MuslimPrefs) {
         // ------------------------------------------------------------------ bottom area: player, hifz bar, menu bar
         Column(Modifier.align(Alignment.BottomCenter)) {
             AnimatedVisibility(visible = audio.active && overlay == Overlay.None && !hifzOn) {
-                MiniPlayer(colors, onOpen = { playerFor = intArrayOf(audio.s, audio.a) },
+                MiniPlayer(colors, onOpen = { if (audio.stream) overlay = Overlay.Listen() else playerFor = intArrayOf(audio.s, audio.a) },
                     modifier = if (barsVisible) Modifier else Modifier.navigationBarsPadding())
             }
             AnimatedVisibility(visible = hifzOn && overlay == Overlay.None) {
@@ -497,6 +503,12 @@ fun App(prefs: Prefs, mp: MuslimPrefs) {
                         "ramadan" -> overlay = Overlay.Ramadan
                         "zakat" -> overlay = Overlay.Zakat
                         "names" -> overlay = Overlay.Names
+                        "listen", "radio" -> overlay = Overlay.Listen(0)
+                        "podcast" -> overlay = Overlay.Listen(1)
+                        "nasheed" -> overlay = Overlay.Listen(2)
+                        "sheikhs" -> overlay = Overlay.Sheikhs
+                        "poems" -> overlay = Overlay.Poems
+                        "tajweed" -> overlay = Overlay.TajweedCourse
                         "kahf" -> goTo(PrayerAlarms.KAHF_PAGE)
                         "search" -> overlay = Overlay.Search
                         "marks" -> { IndexTabs.request = 3; overlay = Overlay.Index }
@@ -518,6 +530,10 @@ fun App(prefs: Prefs, mp: MuslimPrefs) {
             Overlay.Ramadan -> RamadanScreen(mp, prefs, colors, onBack = { overlay = Overlay.Home }, onKhatma = { overlay = Overlay.Khatma })
             Overlay.Zakat -> ZakatScreen(mp, colors, onBack = { overlay = Overlay.Home })
             Overlay.Names -> NamesScreen(colors, onBack = { overlay = Overlay.Home }, onGo = { s, a -> goTo(Quran.pageOf(s, a), Selection(s, a)) })
+            is Overlay.Listen -> androidx.compose.runtime.key(o.tab, o.query) { ListenScreen(colors, listenPrefs, onBack = { overlay = o.back }, startTab = o.tab, podcastQuery = o.query) }
+            Overlay.Sheikhs -> SheikhsScreen(colors, onBack = { overlay = Overlay.Home }, onPodcast = { q -> overlay = Overlay.Listen(1, q, Overlay.Sheikhs) })
+            Overlay.Poems -> PoemsScreen(colors, onBack = { overlay = Overlay.Home })
+            Overlay.TajweedCourse -> TajweedCourseScreen(colors, onBack = { overlay = Overlay.Home }, onGo = { s, a -> goTo(Quran.pageOf(s, a), Selection(s, a)) })
             Overlay.None -> {}
         }
     }

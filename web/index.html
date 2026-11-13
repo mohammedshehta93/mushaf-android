@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>المصحف</title>
+<meta name="description" content="مصحف المدينة بخط مجمع الملك فهد، مع معاني الكلمات والتفسير والتلاوة ومواقيت الصلاة والأذكار — مجاني وبدون إعلانات">
+<meta name="theme-color" content="#0F4C3A">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="المصحف">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body class="theme-cream">
+<div id="splash"><div class="splash-logo">المصحف</div><div class="splash-sub">جارٍ التحميل…</div></div>
+
+<main id="pager" aria-label="صفحات المصحف"></main>
+
+<header id="topbar" class="bar hidden">
+  <div class="tb-main"><div id="tb-surah"></div><div id="tb-sub"></div></div>
+  <div id="tb-page"></div>
+  <button id="tb-mark" class="icon" aria-label="علامة توقف">🔖</button>
+</header>
+
+<footer id="bottombar" class="bar hidden">
+  <div id="slider-label"></div>
+  <input id="slider" type="range" min="1" max="604" step="1" dir="rtl" aria-label="الانتقال إلى صفحة">
+  <nav class="bb-buttons">
+    <button data-act="index"><span>☰</span>الفهرس</button>
+    <button data-act="listen"><span>🎧</span>استماع</button>
+    <button data-act="search"><span>🔍</span>بحث</button>
+    <button data-act="home"><span>🕌</span>المسلم</button>
+    <button data-act="settings"><span>⚙</span>الإعدادات</button>
+  </nav>
+</footer>
+
+<div id="player" class="hidden">
+  <div class="pl-text"><div id="pl-title"></div><div id="pl-sub"></div></div>
+  <button id="pl-prev" class="icon" aria-label="السابق">⏮</button>
+  <button id="pl-toggle" class="icon" aria-label="تشغيل/إيقاف">⏸</button>
+  <button id="pl-next" class="icon" aria-label="التالي">⏭</button>
+  <button id="pl-stop" class="icon" aria-label="إغلاق">✕</button>
+</div>
+
+<div id="meaning" class="card-float hidden"></div>
+<div id="scrim" class="hidden"></div>
+<section id="sheet" class="hidden" role="dialog"></section>
+<section id="screen" class="hidden"></section>
+<div id="toast" class="hidden"></div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

@@ -48,6 +48,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.filled.Forward10
+import androidx.compose.material.icons.filled.Replay10
 import android.widget.Toast
 import com.shehta.mushaf.audio.AudioEngine
 import com.shehta.mushaf.audio.PlayRequest
@@ -67,15 +69,21 @@ fun MiniPlayer(c: MushafColors, onOpen: () -> Unit, modifier: Modifier = Modifie
             Row(Modifier.padding(start = 14.dp, end = 4.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(
-                        if (st.basmala) "البسملة · سورة ${Quran.surahs[st.s - 1].name}" else "سورة ${Quran.surahs.getOrNull(st.s - 1)?.name ?: ""} · الآية ${st.a.ar()}",
-                        fontWeight = FontWeight.SemiBold, fontSize = 15.sp, maxLines = 1,
+                        if (st.stream) st.title else if (st.basmala) "البسملة · سورة ${Quran.surahs[st.s - 1].name}" else "سورة ${Quran.surahs.getOrNull(st.s - 1)?.name ?: ""} · الآية ${st.a.ar()}",
+                        fontWeight = FontWeight.SemiBold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     )
-                    Text(st.error ?: AudioEngine.reciter(st.reciter).name, fontSize = 12.sp,
+                    Text(st.error ?: if (st.stream) (if (st.live) "بث مباشر · " else "") + st.subtitle else AudioEngine.reciter(st.reciter).name, fontSize = 12.sp,
                         color = if (st.error != null) c.mistake else c.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
+                if (st.stream) {
+                    if (!st.live) IconButton(onClick = { AudioEngine.seekBy(15000) }) { Icon(Icons.Filled.Forward10, "تقديم") }
+                    IconButton(onClick = { AudioEngine.toggle() }) { Icon(if (st.playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, "تشغيل/إيقاف") }
+                    if (!st.live) IconButton(onClick = { AudioEngine.seekBy(-15000) }) { Icon(Icons.Filled.Replay10, "رجوع") }
+                } else {
                 IconButton(onClick = { AudioEngine.previous() }) { Icon(Icons.Filled.SkipNext, "السابق") }      // RTL: next icon points back
                 IconButton(onClick = { AudioEngine.toggle() }) { Icon(if (st.playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, "تشغيل/إيقاف") }
                 IconButton(onClick = { AudioEngine.next() }) { Icon(Icons.Filled.SkipPrevious, "التالي") }
+                }
                 IconButton(onClick = { AudioEngine.stop() }) { Icon(Icons.Filled.Close, "إغلاق") }
             }
         }

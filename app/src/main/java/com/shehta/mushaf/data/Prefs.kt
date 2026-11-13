@@ -34,6 +34,7 @@ class Prefs(context: Context) {
     var lastPage by mutableStateOf(sp.getInt("lastPage", 1)); private set
     var theme by mutableStateOf(PaperTheme.entries.getOrElse(sp.getInt("theme", 0)) { PaperTheme.CREAM }); private set
     var mode by mutableStateOf(ViewMode.entries.getOrElse(sp.getInt("mode", 0)) { ViewMode.PAGE }); private set
+    var pageFontStep by mutableStateOf(sp.getInt("pageFontStep", 2)); private set
     var largeFontSize by mutableStateOf(sp.getFloat("largeFont", 30f)); private set
     var tajweedFontSize by mutableStateOf(sp.getFloat("tajweedFont", 26f)); private set
     var tafsirFontSize by mutableStateOf(sp.getFloat("tafsirFont", 19f)); private set
@@ -50,6 +51,7 @@ class Prefs(context: Context) {
     fun updateLastPage(p: Int) { if (p != lastPage) { lastPage = p; sp.edit().putInt("lastPage", p).apply() } }
     fun updateTheme(t: PaperTheme) { theme = t; sp.edit().putInt("theme", t.ordinal).apply() }
     fun updateMode(m: ViewMode) { mode = m; sp.edit().putInt("mode", m.ordinal).apply() }
+    fun updatePageFontStep(v: Int) { pageFontStep = v; sp.edit().putInt("pageFontStep", v).apply() }
     fun updateLargeFont(v: Float) { largeFontSize = v; sp.edit().putFloat("largeFont", v).apply() }
     fun updateTajweedFont(v: Float) { tajweedFontSize = v; sp.edit().putFloat("tajweedFont", v).apply() }
     fun updateTafsirFont(v: Float) { tafsirFontSize = v; sp.edit().putFloat("tafsirFont", v).apply() }

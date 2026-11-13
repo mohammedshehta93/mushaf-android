@@ -259,6 +259,7 @@ private fun PrayerSettings(mp: MuslimPrefs, c: MushafColors, context: Context) {
         PrayerCalc.NAMES.forEachIndexed { i, n ->
             if (i != 1) SwitchRow("تنبيه $n", mp.adhanOn[i]) { mp.updateAdhan(i, it); reschedule() }
         }
+        AlarmHealth(context, c)
         Text("صوت الأذان", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
         Text(if (mp.adhanSound.isEmpty()) "صوت الإشعار العادي. يمكنك اختيار ملف أذان (MP3) من هاتفك ليُشغَّل كاملًا." else "ملف أذان مختار ✓",
             fontSize = 13.sp, color = c.muted)
@@ -303,5 +304,45 @@ private fun PrayerSettings(mp: MuslimPrefs, c: MushafColors, context: Context) {
             },
             confirmButton = { TextButton(onClick = { showCities = false }) { Text("إغلاق") } },
         )
+    }
+}
+
+
+/** Shows the next scheduled adhan and how late the last one arrived, plus the fixes for aggressive battery savers. */
+@Composable
+private fun AlarmHealth(context: Context, c: MushafColors) {
+    val log = PrayerAlarms.log(context)
+    val fmt = SimpleDateFormat("EEEE h:mm:ss a", Locale("ar"))
+    val nextAt = log.getLong("nextAt", 0L)
+    val lastAt = log.getLong("lastAt", 0L)
+    val lastFired = log.getLong("lastFired", 0L)
+    Card2(c, Modifier.padding(vertical = 8.dp)) {
+        Text("حالة التنبيهات", fontWeight = FontWeight.SemiBold)
+        if (nextAt > 0) Text("التنبيه القادم: ${PrayerCalc.NAMES[log.getInt("nextI", 0)]} — ${fmt.format(Date(nextAt))}", fontSize = 13.sp)
+        if (lastFired > 0) {
+            val late = ((lastFired - lastAt) / 1000).toInt()
+            Text("آخر تنبيه وصل ${fmt.format(Date(lastFired))}" + when {
+                late <= 60 -> " — في وقته ✓"
+                else -> " — متأخر ${(late / 60).ar()} دقيقة"
+            }, fontSize = 13.sp, color = if (late <= 60) c.gharib else c.mistake)
+        }
+        val pm = context.getSystemService(android.os.PowerManager::class.java)
+        val optimized = !pm.isIgnoringBatteryOptimizations(context.packageName)
+        if (optimized) {
+            Text("توفير البطارية قد يؤخّر الأذان. استثنِ التطبيق منه:", fontSize = 13.sp, color = c.mistake, modifier = Modifier.padding(top = 6.dp))
+            OutlinedButton(onClick = {
+                try {
+                    context.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}")))
+                } catch (e: Exception) {
+                    context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                }
+            }) { Text("استثناء من توفير البطارية") }
+        }
+        Text("في هواتف Honor وHuawei أيضًا: الإعدادات ← البطارية ← تشغيل التطبيقات ← «المصحف» ← إدارة يدوية، وفعّل الخيارات الثلاثة.",
+            fontSize = 12.sp, color = c.muted, lineHeight = 19.sp, modifier = Modifier.padding(top = 4.dp))
+        TextButton(onClick = {
+            PrayerAlarms.scheduleTest(context)
+            Toast.makeText(context, "سيصلك تنبيه تجريبي بعد دقيقة — اقفل الشاشة وانتظر", Toast.LENGTH_LONG).show()
+        }) { Text("جرّب التنبيه بعد دقيقة") }
     }
 }

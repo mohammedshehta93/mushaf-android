@@ -90,6 +90,15 @@ fun SettingsSheet(prefs: Prefs, onDismiss: () -> Unit) {
             Text("«صفحة المصحف» تعرض الصفحة كما في المصحف المطبوع وتملأ الشاشة. «خط كبير» يكبّر الكلمات ويعيد ترتيبها مع التمرير داخل الصفحة.",
                 fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
+            if (prefs.mode == ViewMode.PAGE) {
+                Label("حجم خط الصفحة")
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    PAGE_FONT_NAMES.forEachIndexed { i, n ->
+                        FilterChip(selected = prefs.pageFontStep == i, onClick = { prefs.updatePageFontStep(i) }, label = { Text(n) })
+                    }
+                }
+                Text("يكبّر الخط داخل الصفحة نفسها بنفس ترتيب سطور المصحف، بدون تمرير.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             if (prefs.mode == ViewMode.LARGE) {
                 Label("حجم الخط الكبير: ${prefs.largeFontSize.toInt()}")
                 Slider(value = prefs.largeFontSize, onValueChange = { prefs.updateLargeFont(it) }, valueRange = 22f..56f)

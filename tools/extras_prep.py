@@ -1,5 +1,6 @@
 """Extra offline data for the app: display text + tajweed, morphology, Bulugh al-Maram, recitation timings."""
 import json, os, re, sys, io, zipfile, urllib.request, hashlib, collections
+import concurrent.futures as cf
 
 sys.path.insert(0, os.path.dirname(__file__))
 import tajweed_prep
@@ -202,6 +203,8 @@ def build_all(D, OUT, src_text, word_counts, ayah_counts=None):
     build_morph(D, OUT, word_counts)
     build_fiqh(D, OUT)
     build_timings(D, OUT)
+    build_radios(D, OUT)
+    build_learning(OUT)
 
 
 # ------------------------------------------------------------------ daily-life Muslim tools data
@@ -255,3 +258,117 @@ def build_muslim(D, OUT, ayah_counts):
     if len(out) != 99: raise SystemExit("ERROR: expected 99 names")
     json.dump(out, open(f"{OUT}/muslim/names.json", "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
     print("muslim data: azkar categories", len(cats), "· daily hadith", len(daily), "· names", len(out))
+
+
+# ------------------------------------------------------------------ live Quran radios (mp3quran.net, official streams)
+RADIOS_API = "https://mp3quran.net/api/v3/radios?language=ar"
+
+
+def _alive(url):
+    """True if the stream answers with audio within a few seconds."""
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Mushaf app build check)", "Icy-MetaData": "0"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            ct = (r.headers.get("Content-Type") or "").lower()
+            r.read(2048)
+            return r.status == 200 and ("audio" in ct or "mpeg" in ct or "ogg" in ct or "aac" in ct or ct == "")
+    except Exception:
+        return False
+
+
+def build_radios(D, OUT):
+    """Never fails the build: if the list cannot be fetched, the app shows an empty radio section."""
+    os.makedirs(f"{OUT}/listen", exist_ok=True)
+    radios = []
+    try:
+        req = urllib.request.Request(RADIOS_API, headers={"User-Agent": "Mozilla/5.0"})
+        data = json.load(urllib.request.urlopen(req, timeout=60))
+        items = data.get("radios", data) if isinstance(data, dict) else data
+        cand = []
+        for x in items:
+            name = (x.get("name") or "").strip()
+            url = (x.get("url") or x.get("radio_url") or "").strip()
+            if name and url.startswith("http"): cand.append((name, url))
+        seen = set(); cand = [c for c in cand if not (c[1] in seen or seen.add(c[1]))]
+
+        def check(c):
+            u = c[1]
+            if u.startswith("http://"):          # prefer https (required by the web version)
+                s = "https://" + u[7:]
+                if _alive(s): return s
+            return u if _alive(u) else None
+        with cf.ThreadPoolExecutor(16) as ex:
+            ok = list(ex.map(check, cand))
+        radios = [{"n": n, "u": good} for (n, _), good in zip(cand, ok) if good]
+    except Exception as ex:
+        print("WARNING: radio list unavailable:", ex)
+    json.dump(radios, open(f"{OUT}/listen/radios.json", "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
+    print("live radios (checked):", len(radios))
+
+
+# ------------------------------------------------------------------ learning: library catalog + tajweed lessons
+HERE = os.path.dirname(os.path.abspath(__file__))
+_THROAT = "ءأإؤئهعحغخ"
+_REGEX_RULES = {
+    # noon with a written sukun, or a (stacked) tanween, followed by a throat letter
+    "izhar_halqi": re.compile("(نۡ|[ً-ٍ])[ؐ-ًؚ-ٟۖ-ۭ]*[اى]?\\s?[" + _THROAT + "]"),
+    # meem with a written sukun, followed by any letter except meem and baa
+    "izhar_shafawi": re.compile("مۡ\\s?[ء-غف-يٱ](?<![مب])"),
+    # the article al- with a written sukun on the lam
+    "lam_qamariyyah": re.compile("ٱلۡ[ء-ي]"),
+}
+
+
+_WITH_NEXT = {"idghaam_mutajanisayn", "idghaam_mutaqaribayn", "madd_munfasil"}
+
+
+def _word_snippet(text, start, end, with_next=False):
+    """Whole word(s) covering [start, end) (plus the following word for rules that act across words)."""
+    a = text.rfind(" ", 0, start) + 1
+    b = text.find(" ", max(end - 1, start))
+    if b < 0: b = len(text)
+    if with_next and b < len(text):
+        nb = text.find(" ", b + 1)
+        b = len(text) if nb < 0 else nb
+    return text[a:b], start - a, end - a
+
+
+def build_learning(OUT):
+    os.makedirs(f"{OUT}/learn", exist_ok=True)
+    lib = json.load(open(f"{HERE}/content/library.json", encoding="utf-8"))
+    json.dump(lib, open(f"{OUT}/learn/library.json", "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
+
+    lessons = json.load(open(f"{HERE}/content/tajweed_lessons.json", encoding="utf-8"))
+    text = json.load(open(f"{OUT}/text.json", encoding="utf-8"))
+    tj = json.load(open(f"{OUT}/tajweed.json"))
+    order = [(s, a) for s in [1] + list(range(78, 115)) + list(range(2, 78)) for a in range(1, 400) if f"{s}:{a}" in text]
+    wanted = set()
+    for l in lessons["lessons"]:
+        for sec in l["sections"]:
+            for k in ("ex", "ex2"):
+                if sec.get(k): wanted.add(sec[k])
+        wanted.update(l.get("quiz", []))
+    found = {r: [] for r in wanted}
+    seen = {r: set() for r in wanted}
+    for s, a in order:
+        t = text[f"{s}:{a}"]
+        spans = tj.get(f"{s}:{a}", [])
+        hits = []
+        for i in range(0, len(spans), 3):
+            name = tajweed_prep.RULES[spans[i]]
+            if name in wanted: hits.append((name, spans[i + 1], spans[i + 2]))
+        for name, rx in _REGEX_RULES.items():
+            if name in wanted:
+                for m in rx.finditer(t):
+                    hits.append((name, m.start(), m.end()))
+        for name, st, en in hits:
+            if len(found[name]) >= 24: continue
+            w, hs, he = _word_snippet(t, st, en, name in _WITH_NEXT)
+            if w in seen[name] or len(w) > 40: continue
+            seen[name].add(w)
+            found[name].append([s, a, w, hs, he])
+    missing = [r for r in wanted if len(found[r]) < 3]
+    if missing: raise SystemExit(f"tajweed examples missing for: {missing}")
+    lessons["examples"] = found
+    json.dump(lessons, open(f"{OUT}/learn/tajweed.json", "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
+    print("learning: tajweed examples", {k: len(v) for k, v in found.items()})

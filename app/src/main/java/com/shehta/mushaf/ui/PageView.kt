@@ -34,7 +34,11 @@ import kotlin.math.max
 import kotlin.math.min
 
 /** A glyph placed on screen. Coordinates in pixels, x from the left. */
-class Placed(val tok: Token, val left: Float, val width: Float, val baseline: Float, val top: Float, val bottom: Float)
+class Placed(
+    val tok: Token, val left: Float, val width: Float, val baseline: Float, val top: Float, val bottom: Float,
+    /** Where the glyph is drawn (its origin) and its horizontal scale — differ from left/1 only on tightened lines. */
+    val drawX: Float = left, val sx: Float = 1f,
+)
 
 /** A surah header (kind 0) or basmala (kind 1) box. */
 class Frame(val kind: Int, val surah: Int, val rect: RectF)
@@ -68,11 +72,19 @@ private const val REF = 100f
 private const val MAX_LINE_REF = 1630f
 
 /**
+ * Text size steps for the page view. Step 0 fits the widest line of the Mushaf (the printed proportions);
+ * the larger steps fit a narrower reference width (median line = 1416); the minority of lines that are then too
+ * long are narrowed horizontally (measured: 4.5% of lines at 1530, 11% at 1460). Line breaks never change.
+ */
+val PAGE_FONT_STEPS = floatArrayOf(MAX_LINE_REF, 1530f, 1460f)
+val PAGE_FONT_NAMES = listOf("كالمطبوع", "كبير", "أكبر")
+
+/**
  * Lays out one Mushaf page.
  *  PAGE  mode: the 15 lines of the printed Madinah Mushaf, scaled to fill the screen exactly.
  *  LARGE mode: the same word glyphs re-flowed at a bigger size, scrolling vertically inside the page.
  */
-fun layoutPage(page: Page, font: Typeface, w: Float, h: Float, mode: ViewMode, largePx: Float, bottomReserve: Float): Laid {
+fun layoutPage(page: Page, font: Typeface, w: Float, h: Float, mode: ViewMode, largePx: Float, bottomReserve: Float, fontStep: Int = 2): Laid {
     val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = font; textSize = REF }
     val glyphs = ArrayList<Placed>(200)
     val frames = ArrayList<Frame>(4)
@@ -81,7 +93,7 @@ fun layoutPage(page: Page, font: Typeface, w: Float, h: Float, mode: ViewMode, l
     fun refWidth(t: Token) = paint.measureText(t.glyph)
 
     if (mode == ViewMode.PAGE) {
-        val padX = w * 0.022f
+        val padX = w * 0.014f
         val padTop = h * 0.012f
         val innerW = w - 2 * padX
         val innerH = h - padTop - max(bottomReserve, h * 0.012f)
@@ -90,12 +102,14 @@ fun layoutPage(page: Page, font: Typeface, w: Float, h: Float, mode: ViewMode, l
         val contentW = if (special) innerW * 0.76f else innerW
         val left = padX + (innerW - contentW) / 2
 
-        var maxNat = 1f
-        for (l in page.lines) if (l is Line.Text) maxNat = max(maxNat, l.tokens.sumOf { refWidth(it).toDouble() }.toFloat())
-        // One font size for every page (like the printed Mushaf): fitted to the widest line in the whole
-        // Mushaf, so narrower pages are justified instead of being enlarged.
-        val uniform = REF * innerW / MAX_LINE_REF
-        val size = min(min(uniform, REF * contentW / maxNat), lineH * 0.80f)
+        // One font size for every page (like the printed Mushaf), never enlarged per page: narrower pages are justified.
+        val ref = PAGE_FONT_STEPS[fontStep.coerceIn(0, PAGE_FONT_STEPS.size - 1)]
+        val uniform = REF * innerW / ref
+        val size = if (special) {
+            var maxNat = 1f
+            for (l in page.lines) if (l is Line.Text) maxNat = max(maxNat, l.tokens.sumOf { refWidth(it).toDouble() }.toFloat())
+            min(min(uniform, REF * contentW / maxNat), lineH * 0.80f)
+        } else min(uniform, lineH * 0.80f)
         paint.textSize = size
         val fm = paint.fontMetrics
         val startY = padTop + if (special) (innerH - rows * lineH) / 2 else 0f
@@ -108,6 +122,18 @@ fun layoutPage(page: Page, font: Typeface, w: Float, h: Float, mode: ViewMode, l
                 is Line.Text -> {
                     val ws = l.tokens.map { paint.measureText(it.glyph) }
                     val total = ws.sum()
+                    val baseline0 = top + lineH / 2 - (fm.ascent + fm.descent) / 2
+                    if (total > contentW) {
+                        // Too long at this size: the word glyphs already touch, so the line is narrowed slightly
+                        // as a whole (at most ~6% at «كبير», ~10% at «أكبر», on a minority of lines).
+                        val sx = contentW / total
+                        var x = left + contentW
+                        l.tokens.forEachIndexed { j, t ->
+                            x -= ws[j] * sx
+                            glyphs += Placed(t, x, ws[j] * sx, baseline0, top, top + lineH, sx = sx)
+                        }
+                        return@forEachIndexed
+                    }
                     val justify = !special && total > contentW * 0.72f && ws.size > 1
                     val gap = if (justify) (contentW - total) / (ws.size - 1) else 0f
                     var x = if (justify) left + contentW else left + contentW / 2 + total / 2
@@ -215,6 +241,7 @@ fun PageCanvas(
     mode: ViewMode,
     largeFontSp: Float,
     colors: MushafColors,
+    fontStep: Int = 2,
     colorGharib: Boolean,
     showPageNumber: Boolean,
     bookmarked: Boolean,
@@ -230,8 +257,8 @@ fun PageCanvas(
         val largePx = with(density) { largeFontSp * fontScale * this.density }
         val reserve = if (showPageNumber) with(density) { 22f * this.density } else 0f
         val font = remember(page.number) { Quran.pageFont(page.number) }
-        val laid = remember(page.number, w, h, mode, largePx, reserve) {
-            layoutPage(page, font, w, h, mode, largePx, reserve)
+        val laid = remember(page.number, w, h, mode, largePx, reserve, fontStep) {
+            layoutPage(page, font, w, h, mode, largePx, reserve, fontStep)
         }
         val ribbonW = with(density) { 14f * this.density }
         val wordIndex = remember(page.number) { page.wordKeys().withIndex().associate { it.value to it.index } }
@@ -330,7 +357,7 @@ private fun DrawScope.drawPage(
                 continue
             }
             paint.color = if (hz.mistakes.containsKey(key)) c.mistake.toArgb() else ink
-            canvas.drawText(t.glyph, g.left, g.baseline, paint)
+            drawGlyph(canvas, g, paint)
             continue
         }
         paint.color = when {
@@ -338,7 +365,7 @@ private fun DrawScope.drawPage(
             colorGharib && t.colored -> gh
             else -> ink
         }
-        canvas.drawText(t.glyph, g.left, g.baseline, paint)
+        drawGlyph(canvas, g, paint)
     }
 
     // 4) page number + stop-mark ribbon
@@ -357,6 +384,14 @@ private fun DrawScope.drawPage(
         }
         canvas.drawPath(path, p)
     }
+}
+
+private fun drawGlyph(canvas: android.graphics.Canvas, g: Placed, paint: Paint) {
+    if (g.sx == 1f) { canvas.drawText(g.tok.glyph, g.drawX, g.baseline, paint); return }
+    canvas.save()
+    canvas.scale(g.sx, 1f, g.drawX, g.baseline)
+    canvas.drawText(g.tok.glyph, g.drawX, g.baseline, paint)
+    canvas.restore()
 }
 
 private fun drawHeader(canvas: android.graphics.Canvas, f: Frame, c: MushafColors) {

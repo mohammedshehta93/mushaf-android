@@ -46,7 +46,10 @@ object PrayerAlarms {
             for (k in 0 until 6) {
                 val n = mp.next(t) ?: break
                 if (mp.adhanOn[n.first]) {
-                    set(context, am, 100, n.second, Intent(context, AlarmReceiver::class.java).setAction("prayer").putExtra("i", n.first))
+                    set(context, am, 100, n.second,
+                        Intent(context, AlarmReceiver::class.java).setAction("prayer").putExtra("i", n.first).putExtra("at", n.second),
+                        alarmClock = true)
+                    log(context).edit().putLong("nextAt", n.second).putInt("nextI", n.first).apply()
                     break
                 }
                 t = n.second + 1000
@@ -92,11 +95,28 @@ object PrayerAlarms {
     private fun cancel(context: Context, am: AlarmManager, code: Int) =
         am.cancel(pi(context, code, Intent(context, AlarmReceiver::class.java)))
 
-    private fun set(context: Context, am: AlarmManager, code: Int, at: Long, intent: Intent) {
+    /**
+     * Prayer alarms use setAlarmClock: the highest-priority alarm Android has. It is not delayed by
+     * Doze or by the battery savers of Honor/Huawei/Xiaomi phones, which postpone ordinary alarms.
+     */
+    private fun set(context: Context, am: AlarmManager, code: Int, at: Long, intent: Intent, alarmClock: Boolean = false) {
         val p = pi(context, code, intent)
         val exact = Build.VERSION.SDK_INT < 31 || am.canScheduleExactAlarms()
-        if (exact) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, p)
-        else am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, p)
+        when {
+            exact && alarmClock -> am.setAlarmClock(AlarmManager.AlarmClockInfo(at, open(context, 34, screen = "prayer")), p)
+            exact -> am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, p)
+            else -> am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, p)
+        }
+    }
+
+    /** A record of what was scheduled and when it really arrived, shown in the prayer settings. */
+    fun log(context: Context) = context.getSharedPreferences("alarm_log", Context.MODE_PRIVATE)
+
+    /** Test: a prayer-style alarm one minute from now. */
+    fun scheduleTest(context: Context) {
+        val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val at = System.currentTimeMillis() + 60_000L
+        set(context, am, 104, at, Intent(context, AlarmReceiver::class.java).setAction("prayer_test").putExtra("at", at), alarmClock = true)
     }
 
     fun channels(context: Context) {
@@ -129,7 +149,11 @@ object PrayerAlarms {
     fun onAlarm(context: Context, intent: Intent) {
         Quran.init(context)
         val mp = MuslimPrefs(context)
+        val scheduledAt = intent.getLongExtra("at", 0L)
+        if (scheduledAt > 0) log(context).edit().putLong("lastAt", scheduledAt).putLong("lastFired", System.currentTimeMillis())
+            .putString("lastWhat", intent.action).apply()
         when (intent.action) {
+            "prayer_test" -> notify(context, 14, CH_ADHAN, "تنبيه تجريبي", "وصل التنبيه بعد ${((System.currentTimeMillis() - scheduledAt + 60_000L) / 1000).toInt()} ثانية من الضغط (المفروض ٦٠).", open(context, 35, screen = "prayer"))
             "prayer" -> {
                 val i = intent.getIntExtra("i", 0)
                 val name = PrayerCalc.NAMES[i]

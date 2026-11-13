@@ -37,6 +37,12 @@ data class AudioState(
     val basmala: Boolean = false,
     val reciter: String = "",
     val error: String? = null,
+    /** Non-Quran audio (radio / podcast): shown with its own title and no ayah tracking. */
+    val stream: Boolean = false,
+    val title: String = "",
+    val subtitle: String = "",
+    val live: Boolean = false,
+    val streamUrl: String = "",
 )
 
 data class PlayRequest(
@@ -77,7 +83,9 @@ object AudioEngine {
                 if (playbackState == Player.STATE_ENDED) stop() else refresh()
             }
             override fun onPlayerError(error: PlaybackException) {
-                state = state.copy(playing = false, error = "تعذّر تشغيل التلاوة. تأكد من الاتصال بالإنترنت أو نزّل السورة أولًا.")
+                state = state.copy(playing = false, error =
+                    if (state.stream) "تعذّر التشغيل. تأكد من الاتصال بالإنترنت، أو قد يكون البث متوقفًا الآن."
+                    else "تعذّر تشغيل التلاوة. تأكد من الاتصال بالإنترنت أو نزّل السورة أولًا.")
             }
         })
     }
@@ -101,6 +109,7 @@ object AudioEngine {
     }
 
     fun play(req: PlayRequest) {
+        saveStreamPosition(); positionSaver = null
         val r = reciter(req.reciter)
         val ayahs = ArrayList<IntArray>()
         var s = req.fromS; var a = req.fromA
@@ -135,11 +144,43 @@ object AudioEngine {
         startTicker()
     }
 
+    /** Plays a radio stream or a podcast episode. [startMs] resumes an episode; [onPosition] saves progress. */
+    private var positionSaver: ((String, Long) -> Unit)? = null
+
+    fun playStream(title: String, subtitle: String, url: String, live: Boolean, startMs: Long = 0, onPosition: ((String, Long) -> Unit)? = null) {
+        saveStreamPosition()
+        positionSaver = onPosition
+        val item = MediaItem.Builder()
+            .setUri(url)
+            .setMediaId("x:" + url.hashCode())
+            .setMediaMetadata(MediaMetadata.Builder().setTitle(title).setArtist(subtitle).setAlbumTitle("استمع").build())
+            .build()
+        startService()
+        player.setMediaItem(item, if (live) C.TIME_UNSET else startMs)
+        player.repeatMode = Player.REPEAT_MODE_OFF
+        player.playbackParameters = PlaybackParameters(1f)
+        player.prepare()
+        player.play()
+        ticker?.cancel()
+        state = AudioState(active = true, playing = true, stream = true, title = title, subtitle = subtitle, live = live, streamUrl = url)
+        if (!live) ticker = scope.launch { while (isActive) { delay(15000); saveStreamPosition() } }
+    }
+
+    private fun saveStreamPosition() {
+        val st = state
+        if (ready && st.stream && !st.live && st.streamUrl.isNotEmpty()) positionSaver?.invoke(st.streamUrl, player.currentPosition)
+    }
+
+    fun seekBy(ms: Long) { if (ready) player.seekTo((player.currentPosition + ms).coerceAtLeast(0)) }
+
     fun toggle() { if (player.isPlaying) player.pause() else { if (player.playbackState == Player.STATE_IDLE) player.prepare(); player.play() } }
     fun next() { if (player.hasNextMediaItem()) player.seekToNextMediaItem() }
     fun previous() { if (player.hasPreviousMediaItem()) player.seekToPreviousMediaItem() else player.seekTo(0) }
 
     fun stop() {
+        if (state.stream && player.playbackState == Player.STATE_ENDED) state.streamUrl.takeIf { it.isNotEmpty() }?.let { positionSaver?.invoke(it, 0L) }
+        else saveStreamPosition()
+        positionSaver = null
         player.stop()
         player.clearMediaItems()
         ticker?.cancel()
@@ -153,7 +194,13 @@ object AudioEngine {
 
     private fun refresh() {
         if (!state.active) return
+        if (state.stream) {
+            state = state.copy(playing = player.isPlaying, error = if (player.isPlaying) null else state.error)
+            if (!player.isPlaying) saveStreamPosition()
+            return
+        }
         val id = player.currentMediaItem?.mediaId ?: return
+        if (id.startsWith("x:")) return
         if (id.startsWith("b:")) {
             val s = id.removePrefix("b:").toInt()
             state = state.copy(playing = player.isPlaying, s = s, a = 1, word = 0, basmala = true, error = null)
@@ -170,7 +217,7 @@ object AudioEngine {
             while (isActive) {
                 delay(70)
                 val st = state
-                if (!st.active || st.basmala || !player.isPlaying) continue
+                if (!st.active || st.stream || st.basmala || !player.isPlaying) continue
                 val t = Quran.timings(st.reciter, st.s, st.a) ?: continue
                 val pos = player.currentPosition
                 var w = 0

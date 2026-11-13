@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -33,6 +34,12 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.RecordVoiceOver
+import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.automirrored.filled.LibraryBooks
+import androidx.compose.material.icons.filled.Radio
+import androidx.compose.material.icons.filled.Podcasts
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -150,38 +157,58 @@ fun HomeScreen(mp: MuslimPrefs, c: MushafColors, onBack: () -> Unit, onPick: (St
                     }
                 }
             }
-            // ---- all tools
-            item {
-                val tools: List<Triple<String, ImageVector, String>> = listOf(
+            // ---- every tool, grouped so nothing gets lost
+            val sections: List<Pair<String, List<Triple<String, ImageVector, String>>>> = listOf(
+                "القرآن الكريم" to listOf(
+                    Triple("search", Icons.Filled.Search, "البحث في القرآن"),
+                    Triple("tafsir", Icons.Filled.AutoStories, "التفسير"),
+                    Triple("tajweed", Icons.Filled.RecordVoiceOver, "تعلّم التجويد"),
+                    Triple("hifz", Icons.Filled.Psychology, "الحفظ والمراجعة"),
+                    Triple("khatma", Icons.Filled.Event, "الختمة والورد"),
+                    Triple("marks", Icons.Filled.Bookmarks, "العلامات"),
+                    Triple("notes", Icons.Filled.EditNote, "الملاحظات"),
+                ),
+                "الصلاة والعبادات اليومية" to listOf(
                     Triple("prayer", Icons.Filled.AccessTime, "مواقيت الصلاة"),
                     Triple("qibla", Icons.Filled.Explore, "القبلة"),
                     Triple("azkar", Icons.Filled.WbSunny, "الأذكار"),
                     Triple("tasbih", Icons.Filled.TouchApp, "السبحة"),
+                    Triple("tracker", Icons.Filled.CheckBox, "صلواتي"),
                     Triple("hijri", Icons.Filled.CalendarMonth, "التقويم الهجري"),
                     Triple("ramadan", Icons.Filled.NightsStay, "رمضان"),
-                    Triple("tracker", Icons.Filled.CheckBox, "صلواتي"),
                     Triple("zakat", Icons.Filled.Calculate, "الزكاة"),
-                    Triple("names", Icons.Filled.Star, "أسماء الله الحسنى"),
-                    Triple("khatma", Icons.Filled.Event, "الختمة والورد"),
-                    Triple("hifz", Icons.Filled.Psychology, "الحفظ والمراجعة"),
+                ),
+                "طلب العلم" to listOf(
+                    Triple("sheikhs", Icons.Filled.School, "الشيوخ والدروس"),
+                    Triple("poems", Icons.AutoMirrored.Filled.LibraryBooks, "المتون والمنظومات"),
                     Triple("fiqh", Icons.Filled.Gavel, "تعلّم الفقه"),
-                    Triple("search", Icons.Filled.Search, "البحث في القرآن"),
-                    Triple("tafsir", Icons.Filled.AutoStories, "التفسير"),
-                    Triple("marks", Icons.Filled.Bookmarks, "العلامات"),
-                    Triple("notes", Icons.Filled.EditNote, "الملاحظات"),
-                    Triple("share", Icons.Filled.Share, "شارك التطبيق"),
+                    Triple("names", Icons.Filled.Star, "أسماء الله الحسنى"),
+                ),
+                "استمع" to listOf(
+                    Triple("radio", Icons.Filled.Radio, "إذاعات القرآن"),
+                    Triple("podcast", Icons.Filled.Podcasts, "بودكاست"),
+                    Triple("nasheed", Icons.Filled.Headphones, "أناشيد بدون موسيقى"),
+                ),
+                "التطبيق" to listOf(
                     Triple("settings", Icons.Filled.Settings, "الإعدادات"),
-                )
-                Column {
-                    tools.chunked(3).forEach { row ->
-                        Row(Modifier.fillMaxWidth()) {
-                            row.forEach { (id, icon, label) ->
-                                Column(Modifier.weight(1f).clickable { onPick(id) }.padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Box(Modifier.size(52.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), CircleShape), contentAlignment = Alignment.Center) {
-                                        Icon(icon, label, tint = MaterialTheme.colorScheme.primary)
+                    Triple("share", Icons.Filled.Share, "شارك التطبيق"),
+                ),
+            )
+            sections.forEach { (title, tools) ->
+                item {
+                    Text(title, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = c.gharib, modifier = Modifier.padding(top = 6.dp, start = 4.dp))
+                    Column {
+                        tools.chunked(4).forEach { row ->
+                            Row(Modifier.fillMaxWidth()) {
+                                row.forEach { (id, icon, label) ->
+                                    Column(Modifier.weight(1f).clickable { onPick(id) }.padding(vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Box(Modifier.size(50.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), CircleShape), contentAlignment = Alignment.Center) {
+                                            Icon(icon, label, tint = MaterialTheme.colorScheme.primary)
+                                        }
+                                        Text(label, fontSize = 12.sp, textAlign = TextAlign.Center, maxLines = 2, modifier = Modifier.padding(top = 6.dp, start = 2.dp, end = 2.dp))
                                     }
-                                    Text(label, fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 6.dp))
                                 }
+                                repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
                             }
                         }
                     }

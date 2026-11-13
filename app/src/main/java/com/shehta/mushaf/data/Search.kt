@@ -13,7 +13,7 @@ object ArabicText {
                 when (ch) {
                     'ٱ', 'أ', 'إ', 'آ' -> 'ا'
                     'ى' -> 'ي'
-                    'ؤ', 'ئ' -> 'ء'
+                    'ؤ', 'ئ', 'ء' -> continue   // hamza seats differ between the Uthmani text and normal typing
                     'ة' -> 'ه'
                     'ۥ', 'ۦ' -> continue
                     else -> ch

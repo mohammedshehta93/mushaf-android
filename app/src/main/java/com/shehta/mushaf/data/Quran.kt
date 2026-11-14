@@ -27,8 +27,12 @@ class Token(val glyph: String, val s: Int, val a: Int, val w: Int, val g: Int, v
 sealed class Line {
     class Header(val surah: Int) : Line()
     object Basmala : Line()
-    class Text(val tokens: List<Token>) : Line()
+    /** words: the official KFGQPC text of this line, word by word (for the coloured tajweed page). */
+    class Text(val tokens: List<Token>, val words: List<TWord> = emptyList()) : Line()
 }
+
+/** One word of the official text on a line: index of its first glyph in the line, the text, tajweed spans [rule, start, end]*. */
+class TWord(val glyphIndex: Int, val text: String, val spans: IntArray)
 
 class Page(val number: Int, val lines: List<Line>)
 
@@ -101,7 +105,11 @@ object Quran {
         val pr = m.getJSONArray("pageRanges")
         pageRanges = Array(pr.length()) { i -> pr.getJSONArray(i).toIntArray() }
         sajdas = m.getJSONArray("sajda").map { key(it.getInt("s"), it.getInt("a")) }.toSet()
+        maxLine = m.optDouble("maxLine", 1610.0).toFloat()
     }
+
+    /** Widest line of the whole Mushaf at font size 100 (QCF V2, measured at build time). */
+    var maxLine = 1610f; private set
 
     private fun key(s: Int, a: Int) = s.toLong() * 1000 + a
 
@@ -137,7 +145,13 @@ object Quran {
                         toks += Token(g.substring(ci, ci + len), kk.getInt(0), kk.getInt(1), kk.getInt(2), gid, m >= 0)
                         ci += len
                     }
-                    lines += Line.Text(toks)
+                    val vv = o.optJSONArray("v")
+                    val words = if (vv == null) emptyList() else List(vv.length()) { i ->
+                        val x = vv.getJSONArray(i)
+                        val sp = x.optJSONArray(2)
+                        TWord(x.getInt(0), x.getString(1), if (sp == null) IntArray(0) else IntArray(sp.length()) { sp.getInt(it) })
+                    }
+                    lines += Line.Text(toks, words)
                 }
             }
         }
@@ -153,6 +167,22 @@ object Quran {
     val hafsFont: Typeface by lazy { Typeface.createFromAsset(app.assets, "quran/fonts/hafs.otf") }
 
     // ------------------------------------------------------------------ navigation helpers
+
+    /** Official-text tokens of every word of an ayah, keyed by layout word number (1-based). */
+    fun ayahWords(s: Int, a: Int): Map<Int, String> {
+        val out = LinkedHashMap<Int, String>()
+        val p0 = pageOf(s, a)
+        for (pn in p0..minOf(p0 + 1, PAGES)) {
+            for (l in page(pn).lines) {
+                if (l !is Line.Text) continue
+                for (v in l.words) {
+                    val t = l.tokens.getOrNull(v.glyphIndex) ?: continue
+                    if (t.s == s && t.a == a) out[t.w] = (out[t.w]?.let { "$it " } ?: "") + v.text
+                }
+            }
+        }
+        return out
+    }
 
     fun pageOf(s: Int, a: Int): Int = ayahPage.getOrNull(s - 1)?.getOrNull(a - 1) ?: 1
 

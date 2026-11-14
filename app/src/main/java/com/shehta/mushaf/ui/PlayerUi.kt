@@ -37,6 +37,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -105,7 +106,9 @@ fun PlayerSheet(prefs: Prefs, startS: Int, startA: Int, onDismiss: () -> Unit) {
             Text("الاستماع · سورة ${surah.name}", fontWeight = FontWeight.Bold, fontSize = 19.sp)
 
             Label2("القارئ")
-            Quran.reciters.forEach { r ->
+            val visible = Quran.reciters.filter { !com.shehta.mushaf.data.Learn.reciterHidden(it.name) }.ifEmpty { Quran.reciters }
+            LaunchedEffect(visible) { if (visible.none { it.id == prefs.reciter }) prefs.updateReciter(visible.first().id) }
+            visible.forEach { r ->
                 Row(Modifier.fillMaxWidth().clickable { prefs.updateReciter(r.id) }, verticalAlignment = Alignment.CenterVertically) {
                     RadioButton(selected = prefs.reciter == r.id, onClick = { prefs.updateReciter(r.id) })
                     Text(r.name, modifier = Modifier.weight(1f))

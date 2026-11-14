@@ -43,7 +43,7 @@ class Placed(
 /** A surah header (kind 0) or basmala (kind 1) box. */
 class Frame(val kind: Int, val surah: Int, val rect: RectF)
 
-class Laid(val glyphs: List<Placed>, val frames: List<Frame>, val size: Float, val height: Float, val lineH: Float)
+class Laid(val glyphs: List<Placed>, val frames: List<Frame>, val size: Float, val height: Float, val lineH: Float, val paged: Boolean = false)
 
 /** What is currently selected on a page: an ayah (long press) and/or a gharib phrase (tap). w = pressed word. */
 data class Selection(val s: Int, val a: Int, val gharib: Int = -1, val w: Int = 0, val wordOnly: Boolean = false)
@@ -68,15 +68,12 @@ fun Page.wordKeys(): List<String> {
 
 private const val REF = 100f
 
-/** Widest natural line of all 604 QCF V1 page fonts at size 100 (16.2964 em, measured from the font files). */
-private const val MAX_LINE_REF = 1630f
 
 /**
- * Text size steps for the page view. Step 0 fits the widest line of the Mushaf (the printed proportions);
- * the larger steps fit a narrower reference width (median line = 1416); the minority of lines that are then too
- * long are narrowed horizontally (measured: 4.5% of lines at 1530, 11% at 1460). Line breaks never change.
+ * Text size steps for the page view (QCF V2). Step 0 fits the widest line of the whole Mushaf exactly like the print
+ * (Quran.maxLine, measured at build time); the larger steps narrow the few lines that would then be too long.
  */
-val PAGE_FONT_STEPS = floatArrayOf(MAX_LINE_REF, 1530f, 1460f)
+val PAGE_FONT_STEPS = floatArrayOf(1f, 0.95f, 0.91f)
 val PAGE_FONT_NAMES = listOf("كالمطبوع", "كبير", "أكبر")
 
 /**
@@ -84,7 +81,7 @@ val PAGE_FONT_NAMES = listOf("كالمطبوع", "كبير", "أكبر")
  *  PAGE  mode: the 15 lines of the printed Madinah Mushaf, scaled to fill the screen exactly.
  *  LARGE mode: the same word glyphs re-flowed at a bigger size, scrolling vertically inside the page.
  */
-fun layoutPage(page: Page, font: Typeface, w: Float, h: Float, mode: ViewMode, largePx: Float, bottomReserve: Float, fontStep: Int = 2): Laid {
+fun layoutPage(page: Page, font: Typeface, w: Float, h: Float, mode: ViewMode, largePx: Float, bottomReserve: Float, fontStep: Int = 0): Laid {
     val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = font; textSize = REF }
     val glyphs = ArrayList<Placed>(200)
     val frames = ArrayList<Frame>(4)
@@ -94,7 +91,7 @@ fun layoutPage(page: Page, font: Typeface, w: Float, h: Float, mode: ViewMode, l
 
     if (mode == ViewMode.PAGE) {
         val padX = w * 0.014f
-        val padTop = h * 0.012f
+        val padTop = max(bottomReserve, h * 0.012f)          // juz / surah line on top, like the print
         val innerW = w - 2 * padX
         val innerH = h - padTop - max(bottomReserve, h * 0.012f)
         val rows = page.lines.size
@@ -103,7 +100,7 @@ fun layoutPage(page: Page, font: Typeface, w: Float, h: Float, mode: ViewMode, l
         val left = padX + (innerW - contentW) / 2
 
         // One font size for every page (like the printed Mushaf), never enlarged per page: narrower pages are justified.
-        val ref = PAGE_FONT_STEPS[fontStep.coerceIn(0, PAGE_FONT_STEPS.size - 1)]
+        val ref = Quran.maxLine * PAGE_FONT_STEPS[fontStep.coerceIn(0, PAGE_FONT_STEPS.size - 1)]
         val uniform = REF * innerW / ref
         val size = if (special) {
             var maxNat = 1f
@@ -134,7 +131,7 @@ fun layoutPage(page: Page, font: Typeface, w: Float, h: Float, mode: ViewMode, l
                         }
                         return@forEachIndexed
                     }
-                    val justify = !special && total > contentW * 0.72f && ws.size > 1
+                    val justify = !special && total > contentW * 0.9f && ws.size > 1
                     val gap = if (justify) (contentW - total) / (ws.size - 1) else 0f
                     var x = if (justify) left + contentW else left + contentW / 2 + total / 2
                     val baseline = top + lineH / 2 - (fm.ascent + fm.descent) / 2
@@ -146,7 +143,7 @@ fun layoutPage(page: Page, font: Typeface, w: Float, h: Float, mode: ViewMode, l
                 }
             }
         }
-        return Laid(glyphs, frames, size, h, lineH)
+        return Laid(glyphs, frames, size, h, lineH, paged = true)
     }
 
     // ---------------- LARGE (re-flow) mode
@@ -163,19 +160,34 @@ fun layoutPage(page: Page, font: Typeface, w: Float, h: Float, mode: ViewMode, l
     class Group(val toks: MutableList<Token>, var width: Float)
     val pending = ArrayList<Group>()
 
+    /**
+     * Balanced line breaking (minimum raggedness): words are spread so every line is about equally full and no line
+     * is left with two or three stranded words. All lines are justified, except the last line of a surah.
+     */
     fun flush(justifyLast: Boolean) {
         if (pending.isEmpty()) return
-        var lineStart = 0
-        while (lineStart < pending.size) {
-            var end = lineStart
-            var wSum = pending[lineStart].width
-            while (end + 1 < pending.size && wSum + space + pending[end + 1].width <= contentW) {
-                end++; wSum += space + pending[end].width
+        val n = pending.size
+        val best = DoubleArray(n + 1) { Double.MAX_VALUE }; best[n] = 0.0
+        val next = IntArray(n + 1) { n }
+        for (i in n - 1 downTo 0) {
+            var len = 0f
+            for (j in i until n) {
+                len += pending[j].width + if (j > i) space else 0f
+                if (len > contentW && j > i) break
+                val slack = (contentW - len).coerceAtLeast(0f).toDouble()
+                val cost = if (j == n - 1 && !justifyLast) 0.0 else slack * slack
+                if (best[j + 1] != Double.MAX_VALUE && cost + best[j + 1] < best[i]) { best[i] = cost + best[j + 1]; next[i] = j + 1 }
             }
-            val last = end == pending.size - 1
-            val n = end - lineStart
-            val gap = if (n > 0 && (!last || justifyLast)) (contentW - (wSum - n * space)) / n else space
-            var x = padX + contentW
+        }
+        var lineStart = 0
+        while (lineStart < n) {
+            val end = next[lineStart] - 1
+            var wSum = 0f
+            for (gi in lineStart..end) wSum += pending[gi].width
+            val last = end == n - 1
+            val k = end - lineStart
+            val gap = if (k > 0 && (!last || justifyLast)) (contentW - wSum) / k else space
+            var x = if (k == 0 && justifyLast) padX + contentW / 2 + wSum / 2 else padX + contentW
             val baseline = y + lineH / 2 - (fm.ascent + fm.descent) / 2
             for (gi in lineStart..end) {
                 val g = pending[gi]
@@ -215,7 +227,10 @@ fun layoutPage(page: Page, font: Typeface, w: Float, h: Float, mode: ViewMode, l
             }
         }
     }
-    flush(false)
+    // The page usually continues on the next one, so its last line is justified too — unless a surah ends here.
+    val lastTok = pending.lastOrNull()?.toks?.lastOrNull { it.a > 0 }
+    val surahEnds = lastTok != null && lastTok.a >= (Quran.surahs.getOrNull(lastTok.s - 1)?.ayahs ?: 0)
+    flush(!surahEnds)
     y += lineH * 0.8f + bottomReserve
     return Laid(glyphs, frames, size, max(y, h), lineH)
 }
@@ -241,7 +256,7 @@ fun PageCanvas(
     mode: ViewMode,
     largeFontSp: Float,
     colors: MushafColors,
-    fontStep: Int = 2,
+    fontStep: Int = 0,
     colorGharib: Boolean,
     showPageNumber: Boolean,
     bookmarked: Boolean,
@@ -255,7 +270,7 @@ fun PageCanvas(
         val w = constraints.maxWidth.toFloat()
         val h = constraints.maxHeight.toFloat()
         val largePx = with(density) { largeFontSp * fontScale * this.density }
-        val reserve = if (showPageNumber) with(density) { 22f * this.density } else 0f
+        val reserve = if (showPageNumber) with(density) { 24f * this.density } else 0f
         val font = remember(page.number) { Quran.pageFont(page.number) }
         val laid = remember(page.number, w, h, mode, largePx, reserve, fontStep) {
             layoutPage(page, font, w, h, mode, largePx, reserve, fontStep)
@@ -371,9 +386,26 @@ private fun DrawScope.drawPage(
     // 4) page number + stop-mark ribbon
     if (showPageNumber) {
         val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = c.muted.toArgb(); textSize = 13f * density; textAlign = Paint.Align.CENTER
+            color = c.muted.toArgb(); textSize = 13f * density; textAlign = Paint.Align.CENTER; isFakeBoldText = true
         }
-        canvas.drawText(pageNo.ar(), size.width / 2, laid.height - 7f * density, p)
+        if (laid.paged) {
+            // like the printed page: juz on the right, surah on the left, hizb and page number at the bottom
+            val top = 17f * density
+            p.textAlign = Paint.Align.RIGHT
+            canvas.drawText("الجزء " + JUZ_NAMES[Quran.juzOfPage(pageNo) - 1], size.width - 14f * density, top, p)
+            p.textAlign = Paint.Align.LEFT
+            canvas.drawText(Quran.surahs[Quran.firstAyah(pageNo)[0] - 1].name, 14f * density, top, p)
+            val y = laid.height - 8f * density
+            val num = pageNo.ar()
+            p.textAlign = Paint.Align.CENTER; p.color = c.ink.toArgb()
+            val nw = p.measureText(num) + 18f * density
+            val box = RectF(size.width / 2 - nw / 2, y - 14f * density, size.width / 2 + nw / 2, y + 5f * density)
+            val fr = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 1.5f * density; color = c.frame.toArgb() }
+            canvas.drawRoundRect(box, box.height() / 2, box.height() / 2, fr)
+            canvas.drawText(num, size.width / 2, y, p)
+            p.color = c.muted.toArgb(); p.textAlign = Paint.Align.RIGHT
+            canvas.drawText(hizbLabel(pageNo), box.left - 8f * density, y, p)
+        } else canvas.drawText(pageNo.ar(), size.width / 2, laid.height - 7f * density, p)
     }
     if (bookmarked) {
         val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = c.ribbon.toArgb() }
@@ -394,7 +426,7 @@ private fun drawGlyph(canvas: android.graphics.Canvas, g: Placed, paint: Paint) 
     canvas.restore()
 }
 
-private fun drawHeader(canvas: android.graphics.Canvas, f: Frame, c: MushafColors) {
+internal fun drawHeader(canvas: android.graphics.Canvas, f: Frame, c: MushafColors) {
     val r = f.rect
     val h = r.height()
     val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = c.frame.toArgb(); strokeWidth = max(2f, h * 0.05f) }
@@ -421,10 +453,10 @@ private fun drawHeader(canvas: android.graphics.Canvas, f: Frame, c: MushafColor
     canvas.drawText("سورة $name", r.centerX(), r.centerY() - (fm.ascent + fm.descent) / 2, text)
 }
 
-private fun drawBasmala(canvas: android.graphics.Canvas, f: Frame, c: MushafColors) {
+internal fun drawBasmala(canvas: android.graphics.Canvas, f: Frame, c: MushafColors) {
     val r = f.rect
-    // KFGQPC basmala font: drawn left-to-right as #"! so that «بسم» lands on the right.
-    val s = "#\"!"
+    // KFGQPC QCF V2 basmala font: three glyphs in reading order, drawn right-to-left
+    val s = "\uFB51\uFB52\uFB53"
     val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Quran.basmalaFont; color = c.ink.toArgb(); textSize = 100f }
     val wRef = p.measureText(s)
     val size = min(100f * r.width() * 0.70f / wRef, r.height() * 1.05f)
@@ -432,4 +464,16 @@ private fun drawBasmala(canvas: android.graphics.Canvas, f: Frame, c: MushafColo
     p.textAlign = Paint.Align.CENTER
     val fm = p.fontMetrics
     canvas.drawText(s, r.centerX(), r.centerY() - (fm.ascent + fm.descent) / 2, p)
+}
+
+val JUZ_NAMES = listOf("الأول", "الثاني", "الثالث", "الرابع", "الخامس", "السادس", "السابع", "الثامن", "التاسع", "العاشر",
+    "الحادي عشر", "الثاني عشر", "الثالث عشر", "الرابع عشر", "الخامس عشر", "السادس عشر", "السابع عشر", "الثامن عشر", "التاسع عشر",
+    "العشرون", "الحادي والعشرون", "الثاني والعشرون", "الثالث والعشرون", "الرابع والعشرون", "الخامس والعشرون", "السادس والعشرون",
+    "السابع والعشرون", "الثامن والعشرون", "التاسع والعشرون", "الثلاثون")
+
+/** «٣/٤ الحزب ٢٧» — the quarter of the hizb in which the page starts. */
+fun hizbLabel(page: Int): String {
+    val r = Quran.rub.lastOrNull { it.page <= page } ?: Quran.rub.first()
+    val h = (r.n - 1) / 4 + 1; val q = (r.n - 1) % 4
+    return (if (q > 0) listOf("", "١/٤", "١/٢", "٣/٤")[q] + " " else "") + "الحزب " + h.ar()
 }

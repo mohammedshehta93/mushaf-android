@@ -55,7 +55,7 @@ import com.shehta.mushaf.data.ar
 
 /** Text of word w (1-based) of an ayah; pause marks are not words. */
 fun wordText(s: Int, a: Int, w: Int): String =
-    Quran.ayahText(s, a).split(" ").filter { t -> t.any { it in 'ء'..'ي' || it == 'ٱ' } }.getOrNull(w - 1) ?: ""
+    Quran.ayahWords(s, a)[w] ?: ""
 
 /** Controls shown at the bottom of the page in memorisation mode. */
 @Composable

@@ -532,7 +532,7 @@ fun App(prefs: Prefs, mp: MuslimPrefs) {
             Overlay.Names -> NamesScreen(colors, onBack = { overlay = Overlay.Home }, onGo = { s, a -> goTo(Quran.pageOf(s, a), Selection(s, a)) })
             is Overlay.Listen -> androidx.compose.runtime.key(o.tab, o.query) { ListenScreen(colors, listenPrefs, onBack = { overlay = o.back }, startTab = o.tab, podcastQuery = o.query) }
             Overlay.Sheikhs -> SheikhsScreen(colors, onBack = { overlay = Overlay.Home }, onPodcast = { q -> overlay = Overlay.Listen(1, q, Overlay.Sheikhs) })
-            Overlay.Poems -> PoemsScreen(colors, onBack = { overlay = Overlay.Home })
+            Overlay.Poems -> PoemsScreen(colors, listenPrefs, onBack = { overlay = Overlay.Home })
             Overlay.TajweedCourse -> TajweedCourseScreen(colors, onBack = { overlay = Overlay.Home }, onGo = { s, a -> goTo(Quran.pageOf(s, a), Selection(s, a)) })
             Overlay.None -> {}
         }

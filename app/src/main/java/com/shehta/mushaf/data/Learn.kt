@@ -1,13 +1,21 @@
 package com.shehta.mushaf.data
 
+import android.content.Context
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import com.shehta.mushaf.BuildConfig
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
 import java.net.URLEncoder
 
 class Sheikh(val name: String, val query: String, val desc: String)
-class Poem(val name: String, val author: String, val desc: String, val query: String)
+class Track(val title: String, val url: String)
+class Poem(val name: String, val author: String, val desc: String, val query: String, val tracks: List<Track> = emptyList(), val source: String = "")
 class Group<T>(val title: String, val items: List<T>)
-class NamedQuery(val name: String, val query: String)
 
 class TajweedExample(val s: Int, val a: Int, val text: String, val from: Int, val to: Int, val rule: String)
 class LessonSection(val heading: String, val text: String, val examples: List<String>)
@@ -20,26 +28,77 @@ class Lesson(val id: String, val title: String, val sections: List<LessonSection
 object Learn {
     private fun obj(path: String): JSONObject? = try { JSONObject(Quran.asset(path)) } catch (e: Exception) { null }
 
-    private val lib by lazy { obj("learn/library.json") ?: JSONObject() }
+    /** Bundled copy (with audio tracks found at build time) — the remote file overrides lists and hide rules. */
+    private val bundled by lazy { obj("learn/library.json") ?: JSONObject() }
+    private var lib by mutableStateOf<JSONObject?>(null)
+    private fun current(): JSONObject = lib ?: bundled
 
-    private fun <T> groups(key: String, item: (JSONObject) -> T): List<Group<T>> {
-        val arr = lib.optJSONArray(key) ?: return emptyList()
-        return List(arr.length()) { i ->
+    /** The owner edits content/library.json on GitHub; every app picks it up (validated, cached, never breaks the app). */
+    fun refresh(context: Context) {
+        val cache = File(context.filesDir, "library_remote.json")
+        if (lib == null && cache.exists()) valid(cache.readText())?.let { lib = it }
+        Thread {
+            try {
+                val c = URL("https://raw.githubusercontent.com/${BuildConfig.UPDATE_REPO}/main/content/library.json").openConnection() as HttpURLConnection
+                c.connectTimeout = 15000; c.readTimeout = 20000
+                val txt = c.inputStream.bufferedReader().use { it.readText() }
+                valid(txt)?.let { o -> cache.writeText(txt); android.os.Handler(android.os.Looper.getMainLooper()).post { lib = o } }
+            } catch (e: Exception) { /* offline: keep cached / bundled */ }
+        }.start()
+    }
+
+    private fun valid(t: String): JSONObject? = try {
+        JSONObject(t).takeIf { it.optJSONArray("sheikhGroups") != null && it.optJSONArray("poemGroups") != null }
+    } catch (e: Exception) { null }
+
+    private fun hideList(key: String): List<String> {
+        val a = current().optJSONObject("hide")?.optJSONArray(key) ?: return emptyList()
+        return List(a.length()) { a.optString(it).trim() }.filter { it.isNotEmpty() }
+    }
+    private fun hidden(key: String, vararg texts: String): Boolean {
+        val h = hideList(key); if (h.isEmpty()) return false
+        val t = texts.joinToString(" ") { ArabicText.normalize(it) }
+        return h.any { t.contains(ArabicText.normalize(it)) }
+    }
+    fun reciterHidden(name: String) = hidden("reciters", name)
+    fun podcastHidden(title: String, author: String) = hidden("podcasts", title, author)
+    fun radioHidden(name: String) = hidden("radios", name)
+
+    private fun <T> groups(key: String, hideKey: String, item: (JSONObject) -> T, name: (JSONObject) -> String): List<Group<T>> {
+        val arr = current().optJSONArray(key) ?: return emptyList()
+        return (0 until arr.length()).map { i ->
             val g = arr.getJSONObject(i)
-            val items = g.getJSONArray("items")
-            Group(g.getString("title"), List(items.length()) { item(items.getJSONObject(it)) })
-        }
+            val items = g.optJSONArray("items") ?: JSONArray()
+            Group(g.optString("title"), (0 until items.length()).map { items.getJSONObject(it) }.filter { !hidden(hideKey, name(it)) }.map(item))
+        }.filter { it.items.isNotEmpty() }
     }
 
-    val sheikhs: List<Group<Sheikh>> by lazy { groups("sheikhGroups") { Sheikh(it.getString("n"), it.getString("q"), it.optString("d")) } }
-    val poems: List<Group<Poem>> by lazy { groups("poemGroups") { Poem(it.getString("n"), it.optString("a"), it.optString("d"), it.getString("q")) } }
-    val nasheeds: List<NamedQuery> by lazy {
-        val a = lib.optJSONArray("nasheeds") ?: JSONArray()
-        List(a.length()) { a.getJSONObject(it).let { o -> NamedQuery(o.getString("n"), o.getString("q")) } }
+    /** Audio found at build time, by poem name (the remote file has no build results). */
+    private val bundledTracks: Map<String, Pair<List<Track>, String>> by lazy {
+        val out = HashMap<String, Pair<List<Track>, String>>()
+        val gs = bundled.optJSONArray("poemGroups") ?: JSONArray()
+        for (i in 0 until gs.length()) {
+            val items = gs.getJSONObject(i).optJSONArray("items") ?: continue
+            for (j in 0 until items.length()) { val o = items.getJSONObject(j); tracksOf(o).takeIf { it.isNotEmpty() }?.let { out[o.getString("n")] = it to o.optString("srcTitle") } }
+        }
+        out
     }
-    val podcastTopics: List<String> by lazy {
-        val a = lib.optJSONArray("podcastTopics") ?: JSONArray()
-        List(a.length()) { a.getString(it) }
+    private fun tracksOf(o: JSONObject): List<Track> {
+        o.optString("url").takeIf { it.startsWith("http") }?.let { return listOf(Track(o.optString("n"), it)) }
+        val a = o.optJSONArray("tracks") ?: return emptyList()
+        return (0 until a.length()).map { a.getJSONObject(it) }.map { Track(it.optString("t"), it.getString("u")) }
+    }
+
+    val sheikhs: List<Group<Sheikh>> get() = groups("sheikhGroups", "sheikhs", { Sheikh(it.getString("n"), it.optString("q", it.getString("n")), it.optString("d")) }, { it.getString("n") })
+    val poems: List<Group<Poem>> get() = groups("poemGroups", "poems", { o ->
+        val own = tracksOf(o)
+        val b = bundledTracks[o.getString("n")]
+        Poem(o.getString("n"), o.optString("a"), o.optString("d"), o.optString("q", o.getString("n")),
+            own.ifEmpty { b?.first ?: emptyList() }, if (own.isNotEmpty()) "" else b?.second ?: "")
+    }, { it.getString("n") + " " + it.optString("a") })
+    val podcastTopics: List<String> get() {
+        val a = current().optJSONArray("podcastTopics") ?: JSONArray()
+        return List(a.length()) { a.getString(it) }
     }
 
     // ------------------------------------------------------------------ YouTube links (search only; nothing re-hosted)
@@ -53,7 +112,6 @@ object Learn {
     fun playlists(q: String) = yt(q, "EgIQAw%3D%3D")                             // playlists only (organised series)
     fun lectures(q: String) = yt(noMusic("$q محاضرة"))
     fun shorts(q: String) = yt(noMusic("$q #shorts"))
-    fun nasheed(q: String) = yt(noMusic(q))
     fun webSearch(q: String) = "https://www.google.com/search?q=" + enc(q)
 
     // ------------------------------------------------------------------ tajweed course

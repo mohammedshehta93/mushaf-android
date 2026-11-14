@@ -1,5 +1,5 @@
 """Extra offline data for the app: display text + tajweed, morphology, Bulugh al-Maram, recitation timings."""
-import json, os, re, sys, io, zipfile, urllib.request, hashlib, collections
+import json, os, re, sys, io, zipfile, urllib.request, urllib.parse, hashlib, collections
 import concurrent.futures as cf
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -335,7 +335,8 @@ def _word_snippet(text, start, end, with_next=False):
 
 def build_learning(OUT):
     os.makedirs(f"{OUT}/learn", exist_ok=True)
-    lib = json.load(open(f"{HERE}/content/library.json", encoding="utf-8"))
+    lib = load_library()
+    resolve_poem_audio(lib)
     json.dump(lib, open(f"{OUT}/learn/library.json", "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
 
     lessons = json.load(open(f"{HERE}/content/tajweed_lessons.json", encoding="utf-8"))
@@ -372,3 +373,75 @@ def build_learning(OUT):
     lessons["examples"] = found
     json.dump(lessons, open(f"{OUT}/learn/tajweed.json", "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
     print("learning: tajweed examples", {k: len(v) for k, v in found.items()})
+
+
+LIBRARY = os.path.join(HERE, "..", "content", "library.json")
+
+
+def load_library():
+    """content/library.json is edited by the owner on GitHub; a broken file must stop the build (and the app ignores it)."""
+    try:
+        lib = json.load(open(LIBRARY, encoding="utf-8"))
+    except Exception as ex:
+        raise SystemExit(f"content/library.json is not valid JSON: {ex}")
+    for k in ("sheikhGroups", "poemGroups"):
+        if not isinstance(lib.get(k), list): raise SystemExit(f"content/library.json: '{k}' is missing")
+        for g in lib[k]:
+            if not g.get("title") or not isinstance(g.get("items"), list): raise SystemExit(f"content/library.json: bad group in {k}")
+            for it in g["items"]:
+                if not it.get("n"): raise SystemExit(f"content/library.json: item without n in {k}")
+    if not isinstance(lib.get("hide", {}), dict): raise SystemExit("content/library.json: 'hide' must be an object")
+    return lib
+
+
+_BAD = re.compile(r"موسيق|music|song|أغني|اغني|غناء|عزف", re.I)
+_AR_MARKS = re.compile("[\u064B-\u0652\u0670\u0640]")
+
+
+def _norm(t):
+    t = _AR_MARKS.sub("", t or "")
+    for a, b in (("أ", "ا"), ("إ", "ا"), ("آ", "ا"), ("ة", "ه"), ("ى", "ي")): t = t.replace(a, b)
+    return t
+
+
+def _get_json(url):
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Mushaf app build)"})
+    return json.load(urllib.request.urlopen(req, timeout=30))
+
+
+def _archive_tracks(query):
+    """Spoken recordings of a poem on archive.org: the item title must contain every word of the query."""
+    skip = {"متن", "منظومه", "المنظومه", "نظم", "في", "شرح"}
+    words = [w for w in _norm(query).split() if len(w) > 1 and w not in skip]
+    q = urllib.parse.quote(f"({query}) AND mediatype:(audio)")
+    res = _get_json(f"https://archive.org/advancedsearch.php?q={q}&fl[]=identifier&fl[]=title&rows=15&output=json")
+    for doc in res.get("response", {}).get("docs", []):
+        title = doc.get("title") or ""
+        if isinstance(title, list): title = " ".join(title)
+        nt = _norm(title)
+        if _BAD.search(title) or not all(w in nt for w in words): continue
+        ident = doc["identifier"]
+        meta = _get_json(f"https://archive.org/metadata/{urllib.parse.quote(ident)}")
+        files = [f for f in meta.get("files", []) if f.get("name", "").lower().endswith(".mp3") and f.get("source") == "original"]
+        if not files: files = [f for f in meta.get("files", []) if f.get("name", "").lower().endswith(".mp3")]
+        if not files or len(files) > 40: continue
+        files.sort(key=lambda f: f["name"])
+        return {"src": f"archive.org/details/{ident}", "srcTitle": title.strip(), "tracks": [
+            {"t": os.path.splitext(os.path.basename(f["name"]))[0].replace("_", " "),
+             "u": f"https://archive.org/download/{urllib.parse.quote(ident)}/{urllib.parse.quote(f['name'])}"} for f in files]}
+    return None
+
+
+def resolve_poem_audio(lib):
+    """Never fails the build. An item with its own url keeps it; otherwise archive.org is searched once."""
+    found = 0
+    for g in lib["poemGroups"]:
+        for it in g["items"]:
+            if it.get("url"):
+                it["tracks"] = [{"t": it["n"], "u": it["url"]}]; found += 1; continue
+            try:
+                r = _archive_tracks(it.get("search") or it.get("q") or it["n"])
+            except Exception as ex:
+                print("WARNING: audio search failed for", it["n"], ex); r = None
+            if r: it.update(r); found += 1
+    print("poem audio found:", found)

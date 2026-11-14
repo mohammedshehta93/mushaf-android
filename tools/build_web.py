@@ -43,13 +43,14 @@ def main():
     for d in ["pages", "tafsir", "muslim", "listen", "learn"]:
         shutil.copytree(os.path.join(A, d), os.path.join(data, d))
 
-    # fonts (WOFF2: about a third of the TTF size)
-    jobs = [(f"{RAW}/mushaf-woff2/QCF_P{n:03d}.woff2", f"{D}/woff2/p{n}.woff2") for n in range(1, 605)]
-    jobs += [(f"{RAW}/mushaf-woff2/QCF_BSML.woff2", f"{D}/woff2/bsml.woff2"),
-             (f"{RAW}/various-woff2/UthmanicHafs1%20Ver09.woff2", f"{D}/woff2/hafs.woff2")]
-    with cf.ThreadPoolExecutor(8) as ex:
-        list(ex.map(lambda j: fetch(*j), jobs))
-    shutil.copytree(f"{D}/woff2", os.path.join(OUT, "fonts"))
+    # fonts: the QCF V2 page fonts are already WOFF2 (prepared by prepare_data.py); the official Hafs font and the
+    # basmala font are compressed here
+    fonts = os.path.join(OUT, "fonts"); os.makedirs(fonts)
+    for n in range(1, 605):
+        shutil.copy(f"{D}/fonts2/p{n:03d}.woff2", f"{fonts}/p{n}.woff2")
+    from fontTools.ttLib import TTFont
+    for src, dst in ((f"{D}/fonts2/bsml.ttf", "bsml.woff2"), (f"{D}/fonts2/hafs_v22.ttf", "hafs.woff2")):
+        f = TTFont(src); f.flavor = "woff2"; f.save(f"{fonts}/{dst}")
 
     # files for "download the Mushaf for offline use" (tafsir stays on-demand)
     offline = ["data/learn/library.json", "data/learn/tajweed.json", "data/gharib.json", "data/text.json", "data/muslim/azkar.json", "data/muslim/hadith_daily.json", "data/muslim/names.json"]

@@ -101,3 +101,34 @@ $('#scrim').addEventListener('click', () => ui.closeSheet());
 
 export const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 export const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+
+// ---------------------------------------------------------------- the owner's live content file (content/library.json on GitHub)
+const REMOTE_LIBRARY = 'https://raw.githubusercontent.com/mohammedshehta93/mushaf-android/main/content/library.json';
+let libP = null;
+/** Bundled library (with audio found at build time), overridden by the live file; hide rules applied. */
+export function library() {
+  if (!libP) {
+    libP = Promise.all([
+      json('data/learn/library.json'),
+      fetch(REMOTE_LIBRARY, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    ]).then(([b, r]) => {
+      const lib = r && Array.isArray(r.sheikhGroups) && Array.isArray(r.poemGroups) ? r : b;
+      const hide = lib.hide || {};
+      const hidden = (k, ...t) => (hide[k] || []).some((h) => String(h).trim() && normalize(t.join(' ')).includes(normalize(String(h))));
+      const built = {};
+      (b.poemGroups || []).forEach((g) => g.items.forEach((it) => { if (it.tracks) built[it.n] = it; }));
+      const groups = (gs, k, name) => (gs || []).map((g) => ({ ...g, items: (g.items || []).filter((it) => !hidden(k, name(it))) })).filter((g) => g.items.length);
+      return {
+        hidden,
+        podcastTopics: lib.podcastTopics || [],
+        sheikhGroups: groups(lib.sheikhGroups, 'sheikhs', (it) => it.n),
+        poemGroups: groups(lib.poemGroups, 'poems', (it) => `${it.n} ${it.a || ''}`).map((g) => ({
+          ...g,
+          items: g.items.map((it) => (it.url ? { ...it, tracks: [{ t: it.n, u: it.url }], srcTitle: '' }
+            : built[it.n] ? { ...it, tracks: built[it.n].tracks, srcTitle: built[it.n].srcTitle } : { ...it, tracks: [] })),
+        })),
+      };
+    }).catch((e) => { libP = null; throw e; });
+  }
+  return libP;
+}

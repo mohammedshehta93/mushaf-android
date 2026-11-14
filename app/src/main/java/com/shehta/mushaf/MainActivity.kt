@@ -54,6 +54,7 @@ class MainActivity : ComponentActivity() {
         Quran.init(this)
         Tafsirs.init(this)
         Updater.init(this)
+        com.shehta.mushaf.data.Learn.refresh(this)
         AudioEngine.init(this)
         prefs = Prefs(this)
         muslim = MuslimPrefs(this)

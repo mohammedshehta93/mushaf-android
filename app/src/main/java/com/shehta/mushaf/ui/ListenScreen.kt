@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Podcasts
 import androidx.compose.material.icons.filled.Radio
@@ -60,11 +61,14 @@ import com.shehta.mushaf.data.Episode
 import com.shehta.mushaf.data.Listen
 import com.shehta.mushaf.data.ListenPrefs
 import com.shehta.mushaf.data.Podcast
+import com.shehta.mushaf.data.Learn
+import com.shehta.mushaf.data.Poem
+import com.shehta.mushaf.data.Track
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** «استمع»: live Quran radios, podcasts (public directory + RSS), ibtihalat & nasheeds (opened on YouTube). */
+/** «استمع»: live Quran radios, podcasts (public directory + RSS) and spoken didactic poems — all played inside the app. */
 @Composable
 fun ListenScreen(c: MushafColors, lp: ListenPrefs, onBack: () -> Unit, startTab: Int = 0, podcastQuery: String? = null) {
     var tab by rememberSaveable { mutableIntStateOf(startTab) }
@@ -74,7 +78,7 @@ fun ListenScreen(c: MushafColors, lp: ListenPrefs, onBack: () -> Unit, startTab:
     ScreenScaffold(openPodcast?.title ?: "استمع", c, back, subtitle = openPodcast?.author) {
         if (openPodcast == null) {
             TabRow(selectedTabIndex = tab) {
-                listOf("إذاعات مباشرة", "بودكاست", "أناشيد بدون موسيقى").forEachIndexed { i, t ->
+                listOf("إذاعات مباشرة", "بودكاست", "قصائد ومتون").forEachIndexed { i, t ->
                     Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t, fontSize = 14.sp, maxLines = 1) })
                 }
             }
@@ -84,7 +88,7 @@ fun ListenScreen(c: MushafColors, lp: ListenPrefs, onBack: () -> Unit, startTab:
                 openPodcast != null -> EpisodesList(c, lp, openPodcast!!)
                 tab == 0 -> RadiosTab(c)
                 tab == 1 -> PodcastsTab(c, lp, podcastQuery, onOpen = { openPodcast = it })
-                else -> NasheedsTab(c, lp)
+                else -> PoemsAudioTab(c, lp)
             }
         }
         if (AudioEngine.state.active) MiniPlayer(c, onOpen = {})
@@ -230,62 +234,55 @@ private fun formatDuration(d: String): String? {
     return if (d.all { it.isDigit() }) d.toLongOrNull()?.let { formatMs(it * 1000) } else d
 }
 
+/** Plays one recording of a poem inside the app (resumes where the listener stopped). */
+fun playPoem(lp: ListenPrefs, p: Poem, t: Track) {
+    val title = if (p.tracks.size > 1) "${p.name} — ${t.title}" else p.name
+    AudioEngine.playStream(title, p.author, t.url, live = false, startMs = lp.position(t.url), onPosition = { u, ms -> lp.savePosition(u, ms) })
+}
+
+/** Tracks of a poem; the playing one is highlighted. */
 @Composable
-private fun NasheedsTab(c: MushafColors, lp: ListenPrefs) {
-    val context = LocalContext.current
-    var adding by remember { mutableStateOf(false) }
-    fun open(url: String) {
-        try { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
-        catch (e: Exception) { Toast.makeText(context, "لا يوجد تطبيق لفتح الرابط", Toast.LENGTH_SHORT).show() }
+fun PoemTrackRows(c: MushafColors, lp: ListenPrefs, p: Poem) {
+    val st = AudioEngine.state
+    p.tracks.forEachIndexed { i, t ->
+        val now = st.stream && st.streamUrl == t.url
+        Row(Modifier.fillMaxWidth().clickable { if (now) AudioEngine.toggle() else playPoem(lp, p, t) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(if (now && st.playing) Icons.Filled.GraphicEq else Icons.Filled.PlayArrow, null, tint = if (now) c.gharib else c.marker)
+            Text(if (p.tracks.size > 1) "${(i + 1)}. ${t.title}" else "تشغيل", modifier = Modifier.weight(1f).padding(start = 8.dp),
+                fontWeight = if (now) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+    if (p.source.isNotEmpty()) Text("التسجيل: ${p.source}", fontSize = 11.sp, color = c.muted)
+}
+
+@Composable
+private fun PoemsAudioTab(c: MushafColors, lp: ListenPrefs) {
+    val groups = Learn.poems.map { g -> g.title to g.items.filter { it.tracks.isNotEmpty() } }.filter { it.second.isNotEmpty() }
+    var open by remember { mutableStateOf<String?>(null) }
+    if (groups.isEmpty()) {
+        Centered { Text("لا توجد تسجيلات صوتية بعد.", color = c.muted, modifier = Modifier.padding(24.dp)) }
+        return
     }
     LazyColumn(Modifier.fillMaxWidth(), contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        item {
-            Text("كل البحث مقيّد بـ«بدون موسيقى» ويُفتح على يوتيوب. نتائج يوتيوب لا يمكن ضمانها ١٠٠٪، فلو صادفت مقطعًا بموسيقى تجاوزه.", fontSize = 12.sp, color = c.muted)
-        }
-        items(Listen.NASHEEDS, key = { it.query }) { n ->
-            Card2(c, Modifier.clickable { open(Listen.youtubeSearch(n.query)) }) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.SmartDisplay, null, tint = c.marker)
-                    Column(Modifier.weight(1f).padding(start = 10.dp)) {
-                        Text(n.title, fontWeight = FontWeight.SemiBold)
-                        if (n.note.isNotEmpty()) Text(n.note, fontSize = 12.sp, color = c.muted)
+        item { Text("قصائد ومتون مُلقاة بالصوت تُشغَّل داخل التطبيق، وتكمل من حيث توقفت.", fontSize = 12.sp, color = c.muted) }
+        groups.forEach { (title, items) ->
+            item { Text(title, fontWeight = FontWeight.Bold, color = c.gharib, modifier = Modifier.padding(top = 6.dp)) }
+            items(items, key = { "pa" + it.name + it.author }) { p ->
+                Card2(c, Modifier.clickable {
+                    if (p.tracks.size == 1) { val t = p.tracks[0]; if (AudioEngine.state.streamUrl == t.url) AudioEngine.toggle() else playPoem(lp, p, t) }
+                    else open = if (open == p.name) null else p.name
+                }) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        val now = p.tracks.any { AudioEngine.state.stream && AudioEngine.state.streamUrl == it.url }
+                        Icon(if (now) Icons.Filled.GraphicEq else Icons.Filled.Headphones, null, tint = if (now) c.gharib else c.marker)
+                        Column(Modifier.weight(1f).padding(start = 10.dp)) {
+                            Text(p.name, fontWeight = FontWeight.SemiBold)
+                            Text(listOf(p.author, if (p.tracks.size > 1) "${p.tracks.size} مقاطع" else "").filter { it.isNotEmpty() }.joinToString(" · "), fontSize = 12.sp, color = c.muted)
+                        }
                     }
+                    if (open == p.name) PoemTrackRows(c, lp, p)
                 }
             }
         }
-        item {
-            Spacer(Modifier.height(4.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("روابطي المحفوظة", fontWeight = FontWeight.Bold, color = c.gharib, modifier = Modifier.weight(1f))
-                TextButton(onClick = { adding = true }) { Text("+ أضف رابطًا") }
-            }
-            if (lp.savedLinks.isEmpty()) Text("احفظ رابط قائمة تشغيل أو مقطع تحبه ليبقى هنا.", fontSize = 13.sp, color = c.muted)
-        }
-        items(lp.savedLinks, key = { "l" + it.second }) { (title, url) ->
-            Card2(c, Modifier.clickable { open(url) }) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.SmartDisplay, null, tint = c.gharib)
-                    Text(title, Modifier.weight(1f).padding(start = 10.dp), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    IconButton(onClick = { lp.removeLink(url) }) { Icon(Icons.Filled.Delete, "حذف", tint = c.muted) }
-                }
-            }
-        }
-    }
-    if (adding) {
-        var title by remember { mutableStateOf("") }
-        var url by remember { mutableStateOf("") }
-        val valid = url.trim().startsWith("http")
-        AlertDialog(
-            onDismissRequest = { adding = false },
-            title = { Text("حفظ رابط") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(title, { title = it }, label = { Text("الاسم") }, singleLine = true)
-                    OutlinedTextField(url, { url = it }, label = { Text("الرابط (يوتيوب أو غيره)") }, singleLine = true)
-                }
-            },
-            confirmButton = { TextButton(enabled = valid, onClick = { lp.addLink(title.ifBlank { url.trim() }, url.trim()); adding = false }) { Text("حفظ") } },
-            dismissButton = { TextButton(onClick = { adding = false }) { Text("إلغاء") } },
-        )
     }
 }

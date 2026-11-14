@@ -187,7 +187,7 @@ fun HomeScreen(mp: MuslimPrefs, c: MushafColors, onBack: () -> Unit, onPick: (St
                 "استمع" to listOf(
                     Triple("radio", Icons.Filled.Radio, "إذاعات القرآن"),
                     Triple("podcast", Icons.Filled.Podcasts, "بودكاست"),
-                    Triple("nasheed", Icons.Filled.Headphones, "أناشيد بدون موسيقى"),
+                    Triple("nasheed", Icons.Filled.Headphones, "قصائد ومتون صوتية"),
                 ),
                 "التطبيق" to listOf(
                     Triple("settings", Icons.Filled.Settings, "الإعدادات"),

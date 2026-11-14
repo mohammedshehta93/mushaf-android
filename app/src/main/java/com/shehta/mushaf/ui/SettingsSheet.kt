@@ -87,7 +87,7 @@ fun SettingsSheet(prefs: Prefs, onDismiss: () -> Unit) {
                 FilterChip(selected = prefs.mode == ViewMode.LARGE, onClick = { prefs.updateMode(ViewMode.LARGE) }, label = { Text("خط كبير") })
                 FilterChip(selected = prefs.mode == ViewMode.TAJWEED, onClick = { prefs.updateMode(ViewMode.TAJWEED) }, label = { Text("تجويد") })
             }
-            Text("«صفحة المصحف» تعرض الصفحة كما في المصحف المطبوع وتملأ الشاشة. «خط كبير» يكبّر الكلمات ويعيد ترتيبها مع التمرير داخل الصفحة.",
+            Text("«صفحة المصحف» تعرض الصفحة كما في مصحف المدينة المطبوع سطرًا بسطر. «خط كبير» يكبّر الكلمات ويعيد ترتيبها مع التمرير داخل الصفحة.",
                 fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
             if (prefs.mode == ViewMode.PAGE) {
@@ -97,15 +97,15 @@ fun SettingsSheet(prefs: Prefs, onDismiss: () -> Unit) {
                         FilterChip(selected = prefs.pageFontStep == i, onClick = { prefs.updatePageFontStep(i) }, label = { Text(n) })
                     }
                 }
-                Text("يكبّر الخط داخل الصفحة نفسها بنفس ترتيب سطور المصحف، بدون تمرير.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("«كالمطبوع» مطابق للمصحف تمامًا. الدرجات الأكبر تُضيّق بعض السطور قليلًا لتتسع.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (prefs.mode == ViewMode.LARGE) {
                 Label("حجم الخط الكبير: ${prefs.largeFontSize.toInt()}")
                 Slider(value = prefs.largeFontSize, onValueChange = { prefs.updateLargeFont(it) }, valueRange = 22f..56f)
             }
             if (prefs.mode == ViewMode.TAJWEED) {
-                Label("أقصى حجم لخط التجويد: ${prefs.tajweedFontSize.toInt()}")
-                Slider(value = prefs.tajweedFontSize, onValueChange = { prefs.updateTajweedFont(it) }, valueRange = 18f..48f)
+                Text("صفحة التجويد بنفس سطور المصحف المطبوع، بالنص الرسمي لمجمع الملك فهد وخطه، مع تلوين الأحكام.",
+                    fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
 
             Label("حجم خط التفسير: ${prefs.tafsirFontSize.toInt()}")

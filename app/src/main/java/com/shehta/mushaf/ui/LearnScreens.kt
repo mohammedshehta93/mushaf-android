@@ -128,29 +128,38 @@ fun SheikhsScreen(c: MushafColors, onBack: () -> Unit, onPodcast: (String) -> Un
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PoemsScreen(c: MushafColors, onBack: () -> Unit) {
+fun PoemsScreen(c: MushafColors, lp: com.shehta.mushaf.data.ListenPrefs, onBack: () -> Unit) {
     val context = LocalContext.current
     var open by remember { mutableStateOf<Poem?>(null) }
     ScreenScaffold("المتون والمنظومات", c, onBack, subtitle = "قصائد تعلّم العقيدة والآداب والتجويد والفقه") {
-        LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            item { Text("مرتبة حسب العلم. اضغط على المنظومة لتسمعها مُلقاة بدون موسيقى أو تسمع شرحها أو تقرأ نصها.", fontSize = 13.sp, color = c.muted) }
+        LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            item { Text("مرتبة حسب العلم. اضغط على المنظومة لتسمعها داخل التطبيق أو تسمع شرحها أو تقرأ نصها. 🎧 = لها تسجيل صوتي.", fontSize = 13.sp, color = c.muted) }
             Learn.poems.forEach { g ->
                 item { GroupTitle(g.title, c) }
                 items(g.items, key = { it.name + it.author }) { p ->
                     Card2(c, Modifier.clickable { open = p }) {
-                        Text(p.name, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+                        Text(p.name + if (p.tracks.isNotEmpty()) "  🎧" else "", fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
                         Text(listOf(p.author, p.desc).filter { it.isNotEmpty() }.joinToString(" — "), fontSize = 13.sp, color = c.muted)
                     }
                 }
             }
         }
+        if (com.shehta.mushaf.audio.AudioEngine.state.active) MiniPlayer(c, onOpen = {})
     }
     open?.let { p ->
         ModalBottomSheet(onDismissRequest = { open = null }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
             Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
                 Text(p.name, fontWeight = FontWeight.Bold, fontSize = 19.sp)
                 Text(p.author, color = c.muted, modifier = Modifier.padding(bottom = 6.dp))
-                ActionRow(Icons.Filled.Headphones, "استمع للمنظومة", "إلقاء أو إنشاد بدون موسيقى", c) { openUrl(context, Learn.nasheed("${p.query} إلقاء")) }
+                if (p.tracks.isNotEmpty()) {
+                    Card2(c, Modifier.padding(vertical = 4.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.Headphones, null, tint = c.marker)
+                            Text("  استمع للمنظومة", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                        }
+                        PoemTrackRows(c, lp, p)
+                    }
+                } else Text("لا يوجد تسجيل صوتي لهذه المنظومة بعد.", fontSize = 13.sp, color = c.muted, modifier = Modifier.padding(vertical = 6.dp))
                 ActionRow(Icons.AutoMirrored.Filled.PlaylistPlay, "شرح المنظومة", "سلاسل شرح كاملة للمشايخ", c) { openUrl(context, Learn.playlists("شرح ${p.query}")) }
                 ActionRow(Icons.AutoMirrored.Filled.MenuBook, "نص المنظومة", "ابحث عن النص المضبوط بالشكل", c) { openUrl(context, Learn.webSearch("نص ${p.query} مشكول")) }
             }

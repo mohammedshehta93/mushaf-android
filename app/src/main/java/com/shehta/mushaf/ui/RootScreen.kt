@@ -62,13 +62,10 @@ fun RootScreen(root: String, prefs: Prefs, onBack: () -> Unit, onGo: (Int, Selec
                     val m = Quran.morph(s, a, w)
                     Column(Modifier.fillMaxWidth().clickable { onGo(Quran.pageOf(s, a), Selection(s, a, w = w)) }.padding(horizontal = 16.dp, vertical = 10.dp)) {
                         Text("سورة ${Quran.surahs[s - 1].name} · ${a.ar()}   —   ${m?.description ?: ""}", fontSize = 12.sp, color = c.muted)
-                        val words = Quran.ayahText(s, a).split(" ")
-                        var count = 0
+                        val words = Quran.ayahWords(s, a).entries.toList()
                         val txt = buildAnnotatedString {
-                            words.forEachIndexed { idx, tk ->
-                                val isWord = tk.any { it in 'ء'..'ي' || it == 'ٱ' }
-                                if (isWord) count++
-                                if (isWord && count == w) withStyle(SpanStyle(color = c.gharib, fontWeight = FontWeight.Bold)) { append(tk) } else append(tk)
+                            words.forEachIndexed { idx, (wn, tk) ->
+                                if (wn == w) withStyle(SpanStyle(color = c.gharib, fontWeight = FontWeight.Bold)) { append(tk) } else append(tk)
                                 if (idx < words.size - 1) append(" ")
                             }
                         }

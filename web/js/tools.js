@@ -1,5 +1,5 @@
 // أدوات المسلم: المواقيت، القبلة، الأذكار، السبحة، التقويم الهجري، رمضان، حديث اليوم، الأسماء الحسنى، الزكاة.
-import { $, $$, ar, esc, store, json, normalize, toast, ui, isIOS } from './core.js';
+import { $, $$, ar, esc, store, json, normalize, toast, ui, isIOS, library } from './core.js';
 import { METHODS, NAMES, method, compute, qibla, distanceToKaaba, fmt, CITIES } from './prayer.js';
 import { app } from './app.js';
 
@@ -63,7 +63,7 @@ const HOME_SECTIONS = [
   ['الصلاة والعبادات اليومية', [['prayer', '🕰', 'مواقيت الصلاة'], ['qibla', '🧭', 'القبلة'], ['azkar', '📿', 'الأذكار'], ['tasbih', '👆', 'السبحة'],
     ['hijri', '🗓', 'التقويم الهجري'], ['ramadan', '🌙', 'رمضان'], ['zakat', '🧮', 'الزكاة']]],
   ['طلب العلم', [['sheikhs', '🎓', 'الشيوخ والدروس'], ['poems', '📜', 'المتون والمنظومات'], ['names', '✨', 'أسماء الله الحسنى']]],
-  ['استمع', [['radio', '📻', 'إذاعات القرآن'], ['nasheed', '🎧', 'أناشيد بدون موسيقى']]],
+  ['استمع', [['radio', '📻', 'إذاعات القرآن'], ['nasheed', '🎧', 'قصائد ومتون صوتية']]],
   ['التطبيق', [['settings', '⚙', 'الإعدادات'], ['share', '↗', 'شارك التطبيق']]],
 ];
 
@@ -416,64 +416,61 @@ function openZakat() {
   });
 }
 
-// ---------------------------------------------------------------- «استمع»: live Quran radios + ibtihalat/nasheeds (YouTube)
+// ---------------------------------------------------------------- «استمع»: live Quran radios + spoken poems (played in the app)
 const yt = (q, sp) => `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}${sp ? `&sp=${sp}` : ''}`;
 const noMusic = (q) => (q.includes('بدون موسيقى') ? q : `${q} بدون موسيقى`);
-const library = () => json('data/learn/library.json');
 const radio = { audio: new Audio(), url: null, name: '' };
 radio.audio.preload = 'none';
 radio.audio.addEventListener('error', () => { if (radio.url) toast('تعذّر تشغيل البث — تحقق من الاتصال أو جرّب إذاعة أخرى'); });
 document.addEventListener('mushaf:recite', () => { radio.audio.pause(); });
-function radioPlay(u, n) {
+function radioPlay(u, n, resume = false) {
   if (radio.url === u) { if (radio.audio.paused) radio.audio.play().catch(() => {}); else radio.audio.pause(); return; }
   app.stopAudio?.();
-  radio.url = u; radio.name = n; radio.audio.src = u;
-  if ('mediaSession' in navigator) navigator.mediaSession.metadata = new MediaMetadata({ title: n, artist: 'إذاعة مباشرة', album: 'المصحف' });
+  radio.url = u; radio.name = n; radio.resume = resume; radio.audio.src = u;
+  if (resume) { const at = store.get('pos', {})[u]; if (at) radio.audio.currentTime = at; }
+  if ('mediaSession' in navigator) navigator.mediaSession.metadata = new MediaMetadata({ title: n, artist: resume ? 'المتون والقصائد' : 'إذاعة مباشرة', album: 'المصحف' });
   radio.audio.play().catch(() => toast('اضغط مرة أخرى للتشغيل'));
 }
+radio.audio.addEventListener('loadedmetadata', () => { if (radio.resume) { const at = store.get('pos', {})[radio.url]; if (at && Math.abs(radio.audio.currentTime - at) > 2) radio.audio.currentTime = at; } });
+setInterval(() => { if (radio.resume && radio.url && !radio.audio.paused) { const p = store.get('pos', {}); p[radio.url] = radio.audio.currentTime; store.set('pos', p); } }, 10000);
+radio.audio.addEventListener('ended', () => { if (radio.resume) { const p = store.get('pos', {}); delete p[radio.url]; store.set('pos', p); } });
 
 async function openRadio(startTab = 0) {
-  let radios = []; let NASHEEDS = [];
-  try { NASHEEDS = (await library()).nasheeds.map((x) => [x.n, x.q]); } catch { /* offline */ }
-  try { radios = (await json('data/listen/radios.json')).filter((r) => r.u.startsWith('https://')); } catch { /* list missing in this build */ }
+  let radios = []; let lib = { poemGroups: [], hidden: () => false };
+  try { lib = await library(); } catch { /* offline */ }
+  try { radios = (await json('data/listen/radios.json')).filter((r) => r.u.startsWith('https://') && !lib.hidden('radios', r.n)); } catch { /* list missing in this build */ }
+  const poems = lib.poemGroups.map((g) => ({ title: g.title, items: g.items.filter((it) => it.tracks.length) })).filter((g) => g.items.length);
   ui.screen({
-    title: 'استمع', sub: 'إذاعات القرآن المباشرة والابتهالات',
+    title: 'استمع', sub: 'إذاعات القرآن، والقصائد والمتون بالصوت',
     render(body) {
-      let tab = startTab, filter = '';
+      let tab = startTab, filter = '', open = null;
       const draw = () => {
-        const tabs = `<div class="chips">${['إذاعات مباشرة', 'أناشيد بدون موسيقى'].map((t, i) => `<button class="chip ${tab === i ? 'on' : ''}" data-tab="${i}">${t}</button>`).join('')}</div>`;
+        const tabs = `<div class="chips">${['إذاعات مباشرة', 'قصائد ومتون'].map((t, i) => `<button class="chip ${tab === i ? 'on' : ''}" data-tab="${i}">${t}</button>`).join('')}</div>`;
         const playing = radio.url && !radio.audio.paused;
+        const now = radio.url ? `<div class="card row"><span style="font-size:22px">${playing ? '🔊' : '⏸'}</span><b class="grow">${esc(radio.name)}</b><button class="chip" data-toggle>${playing ? 'إيقاف مؤقت' : 'تشغيل'}</button><button class="chip" data-stop>إغلاق</button></div>` : '';
         if (tab === 0) {
           const shown = radios.filter((r) => !filter || r.n.includes(filter.trim()));
-          body.innerHTML = `${tabs}
-            ${radio.url ? `<div class="card row"><span style="font-size:22px">${playing ? '🔊' : '⏸'}</span><b class="grow">${esc(radio.name)}</b><button class="chip" data-toggle>${playing ? 'إيقاف مؤقت' : 'تشغيل'}</button><button class="chip" data-stop>إغلاق</button></div>` : ''}
+          body.innerHTML = `${tabs}${now}
             ${radios.length ? `<input class="input" data-f placeholder="ابحث باسم القارئ أو الإذاعة" value="${esc(filter)}"><p class="muted">بث مباشر من إذاعات mp3quran.net — يحتاج إنترنت، ويستمر عند قفل الشاشة.</p>` : '<p class="muted">قائمة الإذاعات غير متوفرة في هذه النسخة.</p>'}
             ${shown.map((r) => `<button class="item" data-u="${esc(r.u)}" data-n="${esc(r.n)}"><span class="ic">${radio.url === r.u ? '🔊' : '📻'}</span><span class="grow" style="${radio.url === r.u ? 'font-weight:700;color:var(--gharib)' : ''}">${esc(r.n)}</span></button>`).join('')}`;
           const f = $('[data-f]', body);
           if (f) f.oninput = () => { filter = f.value; const pos = f.selectionStart; draw(); const g = $('[data-f]', body); g.focus(); g.setSelectionRange(pos, pos); };
         } else {
-          const links = store.get('ytLinks', []);
-          body.innerHTML = `${tabs}<p class="muted">كل البحث مقيّد بـ«بدون موسيقى» ويُفتح على يوتيوب. نتائج يوتيوب لا يمكن ضمانها ١٠٠٪، فلو صادفت مقطعًا بموسيقى تجاوزه.</p>
-            ${NASHEEDS.map(([t, q]) => `<a class="item" target="_blank" rel="noopener" href="https://www.youtube.com/results?search_query=${encodeURIComponent(noMusic(q))}"><span class="ic">▶️</span><span class="grow">${esc(t)}</span></a>`).join('')}
-            <div class="row" style="margin-top:14px"><b class="grow" style="color:var(--gharib)">روابطي المحفوظة</b><button class="link" data-add>+ أضف رابطًا</button></div>
-            ${links.length ? links.map(([t, u], i) => `<div class="item"><a class="grow" target="_blank" rel="noopener" href="${esc(u)}">▶️ ${esc(t)}</a><button class="link" data-del="${i}">حذف</button></div>`).join('') : '<p class="muted">احفظ رابط قائمة تشغيل أو مقطع تحبه ليبقى هنا.</p>'}`;
+          body.innerHTML = `${tabs}${now}<p class="muted">قصائد ومتون مُلقاة بالصوت، تُشغَّل هنا وتكمل من حيث توقفت.</p>
+            ${poems.length ? poems.map((g) => `<div class="sec-title">${esc(g.title)}</div>${g.items.map((p) => `<div class="card"><button class="row" style="width:100%;text-align:right" data-p="${esc(p.n)}"><span style="font-size:20px">${p.tracks.some((t) => t.u === radio.url) ? '🔊' : '🎧'}</span><span class="grow"><b>${esc(p.n)}</b><div class="muted">${esc([p.a, p.tracks.length > 1 ? `${ar(p.tracks.length)} مقاطع` : ''].filter(Boolean).join(' · '))}</div></span></button>
+              ${open === p.n || p.tracks.length === 1 ? '' : ''}${open === p.n ? p.tracks.map((t, i) => `<button class="item" data-u="${esc(t.u)}" data-n="${esc(`${p.n}${p.tracks.length > 1 ? ` — ${t.t}` : ''}`)}" data-live="0"><span class="ic">${radio.url === t.u ? '🔊' : '▶'}</span><span class="grow">${p.tracks.length > 1 ? `${ar(i + 1)}. ${esc(t.t)}` : 'تشغيل'}</span></button>`).join('') + (p.srcTitle ? `<div class="muted">التسجيل: ${esc(p.srcTitle)}</div>` : '') : ''}</div>`).join('')}`).join('')
+              : '<p class="muted">لا توجد تسجيلات صوتية بعد.</p>'}`;
         }
       };
       draw();
       const sync = () => { if (document.body.contains(body)) draw(); };
       radio.audio.onplay = sync; radio.audio.onpause = sync;
       body.addEventListener('click', (e) => {
-        const t = e.target.closest('[data-tab]'); if (t) { tab = +t.dataset.tab; store.set('listenTab', tab); return draw(); }
-        const r = e.target.closest('[data-u]'); if (r) { radioPlay(r.dataset.u, r.dataset.n); return draw(); }
+        const t = e.target.closest('[data-tab]'); if (t) { tab = +t.dataset.tab; return draw(); }
+        const pp = e.target.closest('[data-p]'); if (pp) { open = open === pp.dataset.p ? null : pp.dataset.p; return draw(); }
+        const r = e.target.closest('[data-u]'); if (r) { radioPlay(r.dataset.u, r.dataset.n, r.dataset.live === '0'); return draw(); }
         if (e.target.closest('[data-toggle]')) return radioPlay(radio.url, radio.name);
         if (e.target.closest('[data-stop]')) { radio.audio.pause(); radio.audio.removeAttribute('src'); radio.audio.load(); radio.url = null; return draw(); }
-        if (e.target.closest('[data-add]')) {
-          const u = (prompt('الرابط (يوتيوب أو غيره):') || '').trim();
-          if (!/^https?:\/\//.test(u)) { if (u) toast('رابط غير صحيح'); return; }
-          const n = (prompt('اسم للرابط:') || '').trim() || u;
-          store.set('ytLinks', [...store.get('ytLinks', []), [n, u]]); return draw();
-        }
-        const d = e.target.closest('[data-del]'); if (d) { const l = store.get('ytLinks', []); l.splice(+d.dataset.del, 1); store.set('ytLinks', l); draw(); }
       });
     },
   });
@@ -509,12 +506,21 @@ async function openPoems() {
   ui.screen({
     title: 'المتون والمنظومات', sub: 'قصائد تعلّم العقيدة والآداب والتجويد والفقه',
     render(body) {
-      body.innerHTML = `<p class="muted">مرتبة حسب العلم. اضغط على المنظومة لتسمعها مُلقاة بدون موسيقى أو تسمع شرحها أو تقرأ نصها.</p>
-        ${lib.poemGroups.map((g) => `<div class="sec-title">${esc(g.title)}</div>${g.items.map((x) => `<button class="card" style="display:block;width:100%;text-align:right" data-q="${esc(x.q)}" data-n="${esc(x.n)}" data-a="${esc(x.a)}"><b>${esc(x.n)}</b><div class="muted">${esc([x.a, x.d].filter(Boolean).join(' — '))}</div></button>`).join('')}`).join('')}`;
+      body.innerHTML = `<p class="muted">مرتبة حسب العلم. 🎧 = لها تسجيل صوتي يُشغَّل هنا. اضغط على المنظومة لتسمعها أو تسمع شرحها أو تقرأ نصها.</p>
+        ${lib.poemGroups.map((g) => `<div class="sec-title">${esc(g.title)}</div>${g.items.map((x) => `<button class="card" style="display:block;width:100%;text-align:right" data-q="${esc(x.q)}" data-n="${esc(x.n)}" data-a="${esc(x.a)}"><b>${esc(x.n)}${x.tracks && x.tracks.length ? ' 🎧' : ''}</b><div class="muted">${esc([x.a, x.d].filter(Boolean).join(' — '))}</div></button>`).join('')}`).join('')}`;
       body.onclick = (e) => {
         const b = e.target.closest('[data-q]'); if (!b) return; const q = b.dataset.q;
+        const poem = lib.poemGroups.flatMap((g) => g.items).find((x) => x.n === b.dataset.n);
+        if (poem && poem.tracks.length) {
+          const sh = choice(b.dataset.n, b.dataset.a, []);
+          sh.insertAdjacentHTML('beforeend', `<div class="card"><b>🎧 استمع للمنظومة</b>${poem.tracks.map((t, i) => `<button class="item" data-tu="${esc(t.u)}" data-tn="${esc(poem.n + (poem.tracks.length > 1 ? ` — ${t.t}` : ''))}"><span class="ic">▶</span>${poem.tracks.length > 1 ? `${ar(i + 1)}. ${esc(t.t)}` : 'تشغيل'}</button>`).join('')}</div>`);
+          sh.onclick = (ev) => { const x = ev.target.closest('[data-tu]'); if (x) { radioPlay(x.dataset.tu, x.dataset.tn, true); toast('جارٍ التشغيل — تحكّم فيه من «استمع»'); } };
+          return sh.insertAdjacentHTML('beforeend', [
+            ['📚', 'شرح المنظومة', 'سلاسل شرح كاملة للمشايخ', yt(`شرح ${q}`, 'EgIQAw%3D%3D')],
+            ['📖', 'نص المنظومة', 'ابحث عن النص المضبوط بالشكل', `https://www.google.com/search?q=${encodeURIComponent(`نص ${q} مشكول`)}`],
+          ].map(([ic, t, d, href]) => `<a class="card row" style="display:flex;text-decoration:none;color:inherit;margin:8px 0" target="_blank" rel="noopener" href="${esc(href)}"><span style="font-size:22px">${ic}</span><span class="grow"><b>${esc(t)}</b><div class="muted">${esc(d)}</div></span></a>`).join(''));
+        }
         choice(b.dataset.n, b.dataset.a, [
-          ['🎧', 'استمع للمنظومة', 'إلقاء أو إنشاد بدون موسيقى', yt(noMusic(`${q} إلقاء`))],
           ['📚', 'شرح المنظومة', 'سلاسل شرح كاملة للمشايخ', yt(`شرح ${q}`, 'EgIQAw%3D%3D')],
           ['📖', 'نص المنظومة', 'ابحث عن النص المضبوط بالشكل', `https://www.google.com/search?q=${encodeURIComponent(`نص ${q} مشكول`)}`],
         ]);

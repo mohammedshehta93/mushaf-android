@@ -15,26 +15,20 @@ import java.net.URLEncoder
 class Radio(val name: String, val url: String)
 class Podcast(val title: String, val author: String, val feed: String, val art: String)
 class Episode(val title: String, val url: String, val date: String, val duration: String, val description: String)
-class NasheedList(val title: String, val note: String, val query: String)
 
 /**
  * The «استمع» tab: live Quran radios (official mp3quran.net streams, checked at build time), podcasts
  * (Apple's public podcast directory + each show's own RSS feed — audio streams from the publisher),
- * and ibtihal / nasheed collections that open on YouTube. Nothing is copied or re-hosted.
+ * and spoken recordings of didactic poems (content/library.json). Nothing is re-hosted.
  */
 object Listen {
     fun radios(): List<Radio> = try {
         val arr = JSONArray(Quran.asset("listen/radios.json"))
-        List(arr.length()) { arr.getJSONObject(it).let { o -> Radio(o.getString("n"), o.getString("u")) } }
+        List(arr.length()) { arr.getJSONObject(it).let { o -> Radio(o.getString("n"), o.getString("u")) } }.filter { !Learn.radioHidden(it.name) }
     } catch (e: Exception) { emptyList() }
 
     /** Search terms offered as chips; results come from the public podcast directory. */
     val SUGGESTED: List<String> get() = Learn.podcastTopics
-
-    /** Curated in tools/content/library.json; every YouTube search gets «بدون موسيقى». */
-    val NASHEEDS: List<NasheedList> get() = Learn.nasheeds.map { NasheedList(it.name, "", it.query) }
-
-    fun youtubeSearch(q: String) = Learn.nasheed(q)
 
     private fun get(url: String): String {
         val c = URL(url).openConnection() as HttpURLConnection
@@ -48,7 +42,7 @@ object Listen {
     fun searchPodcasts(term: String): List<Podcast> {
         val o = JSONObject(get("https://itunes.apple.com/search?media=podcast&limit=40&term=" + URLEncoder.encode(term, "UTF-8")))
         val arr = o.getJSONArray("results")
-        return (0 until arr.length()).map { arr.getJSONObject(it) }.filter { it.optString("feedUrl").isNotEmpty() }.map {
+        return (0 until arr.length()).map { arr.getJSONObject(it) }.filter { it.optString("feedUrl").isNotEmpty() && !Learn.podcastHidden(it.optString("collectionName"), it.optString("artistName")) }.map {
             Podcast(it.optString("collectionName"), it.optString("artistName"), it.getString("feedUrl"), it.optString("artworkUrl600", it.optString("artworkUrl100")))
         }
     }
@@ -95,19 +89,21 @@ object Listen {
 class ListenPrefs(context: Context) {
     private val sp = context.getSharedPreferences("mushaf", Context.MODE_PRIVATE)
 
-    var subscriptions by mutableStateOf(load()); private set
+    private var allSubscriptions by mutableStateOf(load())
+    /** Shows are hidden when the owner blocks them in content/library.json. */
+    val subscriptions: List<Podcast> get() = allSubscriptions.filter { !Learn.podcastHidden(it.title, it.author) }
 
     private fun load(): List<Podcast> = try {
         val a = JSONArray(sp.getString("podcasts", "[]"))
         List(a.length()) { a.getJSONObject(it).let { o -> Podcast(o.getString("t"), o.optString("a"), o.getString("f"), o.optString("i")) } }
     } catch (e: Exception) { emptyList() }
 
-    fun isSubscribed(feed: String) = subscriptions.any { it.feed == feed }
+    fun isSubscribed(feed: String) = allSubscriptions.any { it.feed == feed }
 
     fun toggle(p: Podcast) {
-        subscriptions = if (isSubscribed(p.feed)) subscriptions.filter { it.feed != p.feed } else subscriptions + p
+        allSubscriptions = if (isSubscribed(p.feed)) allSubscriptions.filter { it.feed != p.feed } else allSubscriptions + p
         val a = JSONArray()
-        subscriptions.forEach { a.put(JSONObject().put("t", it.title).put("a", it.author).put("f", it.feed).put("i", it.art)) }
+        allSubscriptions.forEach { a.put(JSONObject().put("t", it.title).put("a", it.author).put("f", it.feed).put("i", it.art)) }
         sp.edit().putString("podcasts", a.toString()).apply()
     }
 

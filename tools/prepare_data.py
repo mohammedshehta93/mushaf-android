@@ -2,12 +2,10 @@
 """Builds the offline assets of the Mushaf app.
 
 Sources (all public, fetched from GitHub):
-  * Page fonts: King Fahd Glorious Quran Printing Complex (KFGQPC) QCF V1 fonts
-      github.com/mustafa0x/qpc-fonts  (mirror of qurancomplex.gov.sa/TTF)
-  * Page/line layout of the Madinah Mushaf + per-word glyph codes
-      github.com/zonetecde/mushaf-layout
-  * Per-ayah glyph reference (used for validation / repair)
-      github.com/mustafa0x/qpc-fonts/mushaf.txt
+  * Page fonts: King Fahd Glorious Quran Printing Complex (KFGQPC) QCF V2 fonts
+    and the page/line layout with per-word glyph codes — github.com/zonetecde/mushaf-layout (QPC2), pinned
+  * Official KFGQPC Hafs text (v22) and its font, for every place the Quran is shown as text
+      github.com/mustafa0x/qpc-fonts/text-mushafs/UthmanicHafs_V22
   * Tafsir Ibn Kathir (Arabic) and "Al-Muyassar fi Gharib Al-Quran" (KFGQPC)
       github.com/spa5k/tafsir_api   (from quran.com / QUL)
   * Juz / hizb / sajda / revelation metadata
@@ -21,13 +19,23 @@ import os as _os, sys as _sys
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 import json, os, re, sys,  difflib, collections, shutil, urllib.request, concurrent.futures as cf
 
+def ensure_fonttools():
+    """fontTools (+brotli for WOFF2) is the only non-standard dependency; installed on demand in CI."""
+    try:
+        import fontTools, brotli  # noqa: F401
+    except ImportError:
+        import subprocess
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "--quiet", "fonttools", "brotli"])
+
 RAW = "https://raw.githubusercontent.com"
+LAYOUT = RAW + "/zonetecde/mushaf-layout/421e9eaa991897ecd50d7abb79160651a45976d3"     # pinned: data must not change under us
+QPC = RAW + "/mustafa0x/qpc-fonts/master"
 SRC = {
-    "layout": RAW + "/zonetecde/mushaf-layout/main/mushaf/page-{n:03d}.json",
-    "font": RAW + "/mustafa0x/qpc-fonts/master/mushaf/QCF_P{n:03d}.TTF",
-    "bsml": RAW + "/mustafa0x/qpc-fonts/master/mushaf/QCF_BSML.TTF",
-    "hafs": RAW + "/mustafa0x/qpc-fonts/master/various/UthmanicHafs1%20Ver09.otf",
-    "ref": RAW + "/mustafa0x/qpc-fonts/master/mushaf.txt",
+    "layout": LAYOUT + "/mushaf/QPC2/page-{n:03d}.json",
+    "font": LAYOUT + "/fonts/QPC2/p{n:03d}.woff2",
+    "bsml": LAYOUT + "/fonts/QPC2/QPC2BSML.ttf",
+    "hafs": QPC + "/text-mushafs/UthmanicHafs_V22/uthmanic_hafs_v22.ttf",
+    "hafs_text": QPC + "/text-mushafs/UthmanicHafs_V22/UthmanicHafs%20v22.json",
     "tafsir": RAW + "/spa5k/tafsir_api/main/tafsir/ar-tafsir-ibn-kathir/{n}.json",
     "gharib": RAW + "/spa5k/tafsir_api/main/tafsir/al-muyassar-fi-al-gharib/{n}.json",
     "info": RAW + "/fawazahmed0/quran-api/1/info.json",
@@ -55,13 +63,13 @@ def fetch(url, path):
 def download(D):
     jobs = []
     for n in range(1, 605):
-        jobs.append((SRC["layout"].format(n=n), f"{D}/layout/page-{n:03d}.json"))
-        jobs.append((SRC["font"].format(n=n), f"{D}/fonts/QCF_P{n:03d}.TTF"))
+        jobs.append((SRC["layout"].format(n=n), f"{D}/layout2/page-{n:03d}.json"))
+        jobs.append((SRC["font"].format(n=n), f"{D}/fonts2/p{n:03d}.woff2"))
     for n in range(1, 115):
         jobs.append((SRC["tafsir"].format(n=n), f"{D}/tafsir/{n}.json"))
         jobs.append((SRC["gharib"].format(n=n), f"{D}/gharib/{n}.json"))
-    jobs += [(SRC["bsml"], f"{D}/fonts/QCF_BSML.TTF"), (SRC["hafs"], f"{D}/fonts/UthmanicHafs.otf"),
-             (SRC["ref"], f"{D}/mushaf.txt"), (SRC["info"], f"{D}/info.json")]
+    jobs += [(SRC["bsml"], f"{D}/fonts2/bsml.ttf"), (SRC["hafs"], f"{D}/fonts2/hafs_v22.ttf"),
+             (SRC["hafs_text"], f"{D}/hafs_v22.json"), (SRC["info"], f"{D}/info.json")]
     with cf.ThreadPoolExecutor(8) as ex:
         list(ex.map(lambda j: fetch(*j), jobs))
 
@@ -82,25 +90,28 @@ def main():
     download(D)
     info = json.load(open(f"{D}/info.json"))
 
-    # ---- reference glyph order (all codepoints used, in font order)
-    ref = [l.split(",", 1) for l in open(f"{D}/mushaf.txt", encoding="utf-8").read().splitlines()]
-    if len(ref) != 6236: fail("mushaf.txt must have 6236 ayahs")
-    order = sorted({ord(c) for _, g in ref for c in g if ord(c) >= 0xFB51})
-    oidx = {c: i for i, c in enumerate(order)}
-    ref_by_ayah = {}
-    ai = 0
-    for ch in info["chapters"]:
-        for v in ch["verses"]:
-            ref_by_ayah[(ch["chapter"], v["verse"])] = ref[ai][1]; ai += 1
+    ensure_fonttools()
+    import layout_v2
+    surah_last = {ch["chapter"]: len(ch["verses"]) for ch in info["chapters"]}
+    os.makedirs(f"{D}/ttf2", exist_ok=True)
 
     pages = []
     words_text = {}           # (s,a,w) -> word text
     repaired = []
+    max_line = 0.0
     for p in range(1, 605):
-        d = json.load(open(f"{D}/layout/page-{p:03d}.json"))
+        ttf = f"{D}/ttf2/p{p}.ttf"
+        if not os.path.exists(ttf):
+            from fontTools.ttLib import TTFont
+            f = TTFont(f"{D}/fonts2/p{p:03d}.woff2"); f.flavor = None
+            for t in ("DSIG",):
+                if t in f: del f[t]
+            f.save(ttf)
+        adv = layout_v2.load_font_metrics(ttf)
+        d = json.load(open(f"{D}/layout2/page-{p:03d}.json"))
         if d["page"] != p: fail(f"page mismatch {p}")
         lines = []
-        toks = []             # flat list [glyph, s, a, w, lineIndex]
+        toks = []             # flat list [glyph, s, a, w, lineIndex, isMarker]
         for ln in d["lines"]:
             t = ln["type"]
             if t == "surah-header":
@@ -111,36 +122,18 @@ def main():
                 li = len(lines); lines.append({"t": "x"})
                 for w in ln["words"]:
                     s, a, i = map(int, w["location"].split(":"))
-                    words_text[(s, a, i)] = re.sub(r"\s*[٠-٩]+$", "", w["word"]).strip()
-                    for c in w["qpcV1"].replace(" ", ""):
-                        toks.append([c, s, a, i, li])
+                    wt = re.sub(r"\s*[٠-٩]+$", "", w["word"]).strip()
+                    if wt: words_text[(s, a, i)] = wt
+                    gs = w["qpcV2"].replace(" ", "")
+                    ends_num = w["word"].strip()[-1:] in "٠١٢٣٤٥٦٧٨٩"
+                    for gi, c in enumerate(gs):
+                        toks.append([c, s, a, i, li, ends_num and gi == len(gs) - 1])
             else:
                 fail(f"unknown line type {t} p{p}")
-        # ---- integrity: glyph codes on a page must be consecutive in font order
-        seq = [oidx.get(ord(c[0]), -1) for c in toks]
-        if seq != list(range(seq[0], seq[0] + len(seq))) if seq else True:
-            # repair using reference per-ayah glyphs, keeping layout line positions
-            ayahs = list(dict.fromkeys((t[1], t[2]) for t in toks))
-            refseq = []
-            for k in ayahs:
-                for c in ref_by_ayah[k]: refseq.append((c, k))
-            a_str = "".join(t[0] for t in toks); b_str = "".join(c for c, _ in refseq)
-            sm = difflib.SequenceMatcher(None, a_str, b_str, autojunk=False)
-            new = []
-            for op, i1, i2, j1, j2 in sm.get_opcodes():
-                if op == "equal":
-                    for off in range(i2 - i1):
-                        t = list(toks[i1 + off]); t[1], t[2] = refseq[j1 + off][1]; new.append(t)
-                elif op in ("insert", "replace"):
-                    base = toks[i1 - 1] if i1 > 0 else toks[0]
-                    for j in range(j1, j2):
-                        c, k = refseq[j]; new.append([c, k[0], k[1], base[3], base[4]])
-                # deletes are dropped
-            toks = new
-            seq = [oidx.get(ord(c[0]), -1) for c in toks]
-            if seq != list(range(seq[0], seq[0] + len(seq))):
-                fail(f"page {p}: glyph sequence still broken after repair")
-            repaired.append(p)
+        repaired += layout_v2.repair_page(p, lines, toks, adv, surah_last, fail)
+        if p > 2:
+            for li, l in enumerate(lines):
+                if l["t"] == "x": max_line = max(max_line, layout_v2.width([t for t in toks if t[4] == li], adv))
         # ---- headers: assign the surah that actually starts after them
         hdr_lines = [i for i, l in enumerate(lines) if l["t"] == "h"]
         starts = [t for t in toks if t[2] == 1]
@@ -150,7 +143,7 @@ def main():
             nxt = [t[1] for t in toks if t[4] > hi and t[2] == 1]
             if nxt: lines[hi]["s"] = nxt[0]
             else:       # header at the very bottom: next page's first surah
-                nd = json.load(open(f"{D}/layout/page-{p+1:03d}.json"))
+                nd = json.load(open(f"{D}/layout2/page-{p+1:03d}.json"))
                 loc = [w["location"] for l in nd["lines"] if l["type"] == "text" for w in l["words"]][0]
                 lines[hi]["s"] = int(loc.split(":")[0])
         # a header followed by nothing of its surah on this page belongs at the bottom
@@ -208,10 +201,10 @@ def main():
         pages[p - 1]["lines"][li]["k"][ti][2] = 0      # w=0 means ayah marker
     if len(last) != 6236: fail(f"ayah count {len(last)} != 6236")
 
-    # ---- validate every page has 15 lines (except 1,2) - report only
+    # ---- every page has 15 lines (except 1, 2)
     odd = [(pg["p"], len(pg["lines"])) for pg in pages if len(pg["lines"]) != 15 and pg["p"] > 2]
-    print("pages with != 15 lines:", odd)
-    print("repairs:", repaired)
+    if odd: fail(f"pages without 15 lines: {odd}")
+    print("layout repairs:", repaired)
 
     # ---- gharib (word meanings) matched to word positions
     gharib = []
@@ -306,7 +299,8 @@ def main():
         page_ranges.append([ks[0][0], ks[0][1], ks[-1][0], ks[-1][1]])
     os.makedirs(f"{OUT}/fonts", exist_ok=True)
     ap = [[ayah_page[(s, a)] for a in range(1, surahs[s - 1]["ayahs"] + 1)] for s in range(1, 115)]
-    json.dump({"ap": ap, "surahs": surahs, "juz": juz, "rub": rub, "sajda": sajda, "pageRanges": page_ranges},
+    json.dump({"ap": ap, "surahs": surahs, "juz": juz, "rub": rub, "sajda": sajda, "pageRanges": page_ranges,
+               "maxLine": round(max_line * 100 + 0.5, 1)},
               open(f"{OUT}/meta.json", "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
     if len(NAMES) != 114: fail("names")
     os.makedirs(f"{OUT}/pages", exist_ok=True)
@@ -321,10 +315,15 @@ def main():
     word_counts = {k: len(v) for k, v in ayah_words.items()}
     import extras_prep
     extras_prep.build_all(D, OUT, src_text, word_counts, [x["ayahs"] for x in surahs])
+    # every text the app shows comes from the official KFGQPC Hafs text + its own font (no conversions)
+    import official_text
+    official_text.apply(D, OUT, pages, surahs, words_text)
+    for pg in pages:
+        json.dump(pg["lines"], open(f"{OUT}/pages/{pg['p']}.json", "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
     for n in range(1, 605):
-        shutil.copy(f"{D}/fonts/QCF_P{n:03d}.TTF", f"{OUT}/fonts/p{n}.ttf")
-    shutil.copy(f"{D}/fonts/QCF_BSML.TTF", f"{OUT}/fonts/bsml.ttf")
-    shutil.copy(f"{D}/fonts/UthmanicHafs.otf", f"{OUT}/fonts/hafs.otf")
+        shutil.copy(f"{D}/ttf2/p{n}.ttf", f"{OUT}/fonts/p{n}.ttf")
+    shutil.copy(f"{D}/fonts2/bsml.ttf", f"{OUT}/fonts/bsml.ttf")
+    shutil.copy(f"{D}/fonts2/hafs_v22.ttf", f"{OUT}/fonts/hafs.otf")
     print("OK: assets written to", OUT)
 
 if __name__ == "__main__":

@@ -1,10 +1,13 @@
 // المصحف — web version (iPhone / any browser). Same data and fonts as the Android app.
-import { $, $$, ar, esc, store, json, font, loadMeta, normalize, toast, ui, isIOS, standalone } from './core.js';
+import { $, $$, ar, esc, store, json, font, loadMeta, normalize, toast, ui, isIOS, standalone, library } from './core.js';
 import { openHome, prayerChip } from './tools.js';
 
 const PAGES = 604;
-const MAX_LINE_REF = 1630;
-const FONT_STEPS = [1630, 1530, 1460]; const FONT_NAMES = ['كالمطبوع', 'كبير', 'أكبر'];   // same steps as the Android app          // widest natural line of all QCF V1 page fonts at size 100 (same constant as the app)
+// QCF V2 (the current Madinah print). meta.maxLine = widest line of the whole Mushaf at size 100 (measured at build).
+const FONT_STEPS = [1, 0.95, 0.91]; const FONT_NAMES = ['كالمطبوع', 'كبير', 'أكبر'];   // same steps as the Android app
+const BASMALA = '\uFB51\uFB52\uFB53';
+const JUZ_NAMES = ['الأول', 'الثاني', 'الثالث', 'الرابع', 'الخامس', 'السادس', 'السابع', 'الثامن', 'التاسع', 'العاشر', 'الحادي عشر', 'الثاني عشر', 'الثالث عشر', 'الرابع عشر', 'الخامس عشر', 'السادس عشر', 'السابع عشر', 'الثامن عشر', 'التاسع عشر', 'العشرون', 'الحادي والعشرون', 'الثاني والعشرون', 'الثالث والعشرون', 'الرابع والعشرون', 'الخامس والعشرون', 'السادس والعشرون', 'السابع والعشرون', 'الثامن والعشرون', 'التاسع والعشرون', 'الثلاثون'];
+const hizbLabel = (p) => { const r = rubOfPage(p); const h = Math.floor((r.n - 1) / 4) + 1, q = (r.n - 1) % 4; return `${q ? `${['', '١/٤', '١/٢', '٣/٤'][q]} ` : ''}الحزب ${ar(h)}`; };
 let meta, current = store.get('page', 1);
 let selection = null;              // {s, a, wordOnly, g}
 const pager = $('#pager');
@@ -40,7 +43,7 @@ async function renderPage(el, n) {
   measureCtx.font = `100px p${n}`;
   const nat = lines.map((l) => (l.t === 'x' ? [...l.g].reduce((t, c) => t + measureCtx.measureText(c).width, 0) : 0));
   const maxNat = Math.max(1, ...nat);
-  const ref = FONT_STEPS[store.get('fontStep', 2)] || MAX_LINE_REF;
+  const ref = (meta.maxLine || 1610) * (FONT_STEPS[store.get('fontStep2', 0)] || 1);
   const size = special ? Math.min((100 * W) / ref, (100 * contentW) / maxNat, lineH * 0.8) : Math.min((100 * W) / ref, lineH * 0.8);
   const startY = special ? (H - rows * lineH) / 2 : 0;
   const frag = document.createDocumentFragment();
@@ -52,16 +55,16 @@ async function renderPage(el, n) {
       d.innerHTML = `<div class="hdr" style="width:100%;height:${lineH * 0.8}px;font-size:${lineH * 0.42}px">سورة ${esc(meta.surahs[l.s - 1].name)}</div>`;
     } else if (l.t === 'b') {
       measureCtx.font = '100px bsml';
-      const w = measureCtx.measureText('#"!').width || 1;
+      const w = measureCtx.measureText(BASMALA).width || 1;
       const bs = Math.min((100 * contentW * 0.7) / w, lineH * 1.05);
-      d.innerHTML = `<div class="bsml" style="width:100%;font-size:${bs}px">#"!</div>`;
+      d.innerHTML = `<div class="bsml" style="width:100%;font-size:${bs}px">${BASMALA}</div>`;
     } else {
       d.style.fontFamily = `p${n}`; d.style.fontSize = `${size}px`;
       const px = (nat[i] * size) / 100;
       if (px > contentW) {   // too long at the larger sizes: narrow this line slightly (line breaks never change)
         d.style.width = `${px}px`; d.style.left = `${left + contentW - px}px`;
         d.style.transformOrigin = 'right center'; d.style.transform = `scaleX(${contentW / px})`;
-      } else if (!special && px > contentW * 0.72 && l.k.length > 1) d.classList.add('full');
+      } else if (!special && px > contentW * 0.9 && l.k.length > 1) d.classList.add('full');
       const glyphs = [...l.g];
       d.innerHTML = glyphs.map((c, j) => {
         const [s, a, w] = l.k[j]; const m = l.m[j];
@@ -73,7 +76,12 @@ async function renderPage(el, n) {
     frag.appendChild(d);
   });
   inner.appendChild(frag);
-  const pno = document.createElement('div'); pno.className = 'pno'; pno.textContent = ar(n); el.appendChild(pno);
+  // like the printed page: juz and surah on top, hizb and page number at the bottom
+  const head = document.createElement('div'); head.className = 'pghead';
+  head.innerHTML = `<span>الجزء ${JUZ_NAMES[juzOfPage(n) - 1]}</span><span>${esc(surahOfPage(n).name)}</span>`;
+  const foot = document.createElement('div'); foot.className = 'pgfoot';
+  foot.innerHTML = `<span>${hizbLabel(n)}</span><b>${ar(n)}</b>`;
+  el.appendChild(head); el.appendChild(foot);
   if (isBookmarked(n)) { const r = document.createElement('div'); r.className = 'ribbon'; el.appendChild(r); }
   el.dataset.state = 'done';
   decorate();
@@ -255,7 +263,6 @@ async function openTafsir(s, a) {
 }
 
 // ---------------------------------------------------------------- index & search
-const JUZ_NAMES = ['الأول', 'الثاني', 'الثالث', 'الرابع', 'الخامس', 'السادس', 'السابع', 'الثامن', 'التاسع', 'العاشر', 'الحادي عشر', 'الثاني عشر', 'الثالث عشر', 'الرابع عشر', 'الخامس عشر', 'السادس عشر', 'السابع عشر', 'الثامن عشر', 'التاسع عشر', 'العشرون', 'الحادي والعشرون', 'الثاني والعشرون', 'الثالث والعشرون', 'الرابع والعشرون', 'الخامس والعشرون', 'السادس والعشرون', 'السابع والعشرون', 'الثامن والعشرون', 'التاسع والعشرون', 'الثلاثون'];
 export function openIndex(tab = 'surahs') {
   ui.screen({
     title: 'الفهرس', sub: `أنت في صفحة ${ar(current)}`, tab,
@@ -394,7 +401,7 @@ function openSettings() {
     <div class="muted" style="margin-top:10px">لون الصفحة</div>
     <div class="chips">${[['cream', 'كريمي'], ['white', 'أبيض'], ['night', 'ليلي']].map(([k, n]) => `<button class="chip ${store.get('theme', 'cream') === k ? 'on' : ''}" data-theme="${k}">${n}</button>`).join('')}</div>
     <div class="muted" style="margin-top:10px">حجم خط الصفحة</div>
-    <div class="chips">${FONT_NAMES.map((n, i) => `<button class="chip ${store.get('fontStep', 2) === i ? 'on' : ''}" data-fs="${i}">${n}</button>`).join('')}</div>
+    <div class="chips">${FONT_NAMES.map((n, i) => `<button class="chip ${store.get('fontStep2', 0) === i ? 'on' : ''}" data-fs="${i}">${n}</button>`).join('')}</div>
     <button class="item" data-t="colored"><span class="ic">${store.get('colored', true) ? '☑' : '☐'}</span>تلوين الكلمات الغريبة (اضغط عليها لمعرفة المعنى)</button>
     <button class="item" data-t="follow"><span class="ic">${store.get('follow', true) ? '☑' : '☐'}</span>تقليب الصفحات مع التلاوة</button>
     <button class="item" data-a="offline"><span class="ic">⬇</span><span class="grow">تنزيل المصحف للاستخدام بدون إنترنت<br><span class="muted" data-off>${store.get('offline') ? 'تم التنزيل ✓' : 'حوالي ٢٥ ميجا'}</span></span></button>
@@ -403,7 +410,7 @@ function openSettings() {
     <p class="muted" style="line-height:1.7">المصادر: صفحات وخطوط مصحف المدينة — مجمع الملك فهد لطباعة المصحف الشريف (رواية حفص). معاني الكلمات: «المُيسَّر في غريب القرآن». التفسير: ابن كثير. التلاوات: everyayah.com. الأذكار: حصن المسلم.</p>`);
   sh.onclick = async (e) => {
     const fs = e.target.closest('[data-fs]');
-    if (fs) { store.set('fontStep', +fs.dataset.fs); window.dispatchEvent(new Event('resize')); openSettings(); return; }
+    if (fs) { store.set('fontStep2', +fs.dataset.fs); window.dispatchEvent(new Event('resize')); openSettings(); return; }
     const t = e.target.closest('[data-theme],[data-t],[data-a]'); if (!t) return;
     if (t.dataset.theme) { store.set('theme', t.dataset.theme); applyTheme(); openSettings(); }
     else if (t.dataset.t) { store.set(t.dataset.t, !store.get(t.dataset.t, true)); applyTheme(); openSettings(); }
@@ -478,6 +485,7 @@ export const app = { stopAudio: () => { if (player.cur) player.stop(); }, goTo, 
     font('hafs', 'fonts/hafs.woff2').catch(() => {});
     meta = await loadMeta();
     reciters = await json('data/reciters.json');
+    library().then((l) => { const v = reciters.filter((r) => !l.hidden('reciters', r.name)); if (v.length) reciters = v; }).catch(() => {});
   } catch (e) {
     $('.splash-sub').textContent = 'تعذّر التحميل. تحقق من الاتصال ثم أعد فتح الصفحة.'; return;
   }

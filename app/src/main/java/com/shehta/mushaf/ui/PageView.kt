@@ -389,22 +389,7 @@ private fun DrawScope.drawPage(
             color = c.muted.toArgb(); textSize = 13f * density; textAlign = Paint.Align.CENTER; isFakeBoldText = true
         }
         if (laid.paged) {
-            // like the printed page: juz on the right, surah on the left, hizb and page number at the bottom
-            val top = 17f * density
-            p.textAlign = Paint.Align.RIGHT
-            canvas.drawText("الجزء " + JUZ_NAMES[Quran.juzOfPage(pageNo) - 1], size.width - 14f * density, top, p)
-            p.textAlign = Paint.Align.LEFT
-            canvas.drawText(Quran.surahs[Quran.firstAyah(pageNo)[0] - 1].name, 14f * density, top, p)
-            val y = laid.height - 8f * density
-            val num = pageNo.ar()
-            p.textAlign = Paint.Align.CENTER; p.color = c.ink.toArgb()
-            val nw = p.measureText(num) + 18f * density
-            val box = RectF(size.width / 2 - nw / 2, y - 14f * density, size.width / 2 + nw / 2, y + 5f * density)
-            val fr = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 1.5f * density; color = c.frame.toArgb() }
-            canvas.drawRoundRect(box, box.height() / 2, box.height() / 2, fr)
-            canvas.drawText(num, size.width / 2, y, p)
-            p.color = c.muted.toArgb(); p.textAlign = Paint.Align.RIGHT
-            canvas.drawText(hizbLabel(pageNo), box.left - 8f * density, y, p)
+            drawPageInfo(canvas, pageNo, size.width, laid.height, c, density)
         } else canvas.drawText(pageNo.ar(), size.width / 2, laid.height - 7f * density, p)
     }
     if (bookmarked) {
@@ -476,4 +461,26 @@ fun hizbLabel(page: Int): String {
     val r = Quran.rub.lastOrNull { it.page <= page } ?: Quran.rub.first()
     val h = (r.n - 1) / 4 + 1; val q = (r.n - 1) % 4
     return (if (q > 0) listOf("", "١/٤", "١/٢", "٣/٤")[q] + " " else "") + "الحزب " + h.ar()
+}
+
+/** Juz and surah on top, hizb quarter and page number at the bottom — like the printed page. */
+internal fun drawPageInfo(canvas: android.graphics.Canvas, pageNo: Int, width: Float, height: Float, c: MushafColors, density: Float) {
+    val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = c.muted.toArgb(); textSize = 13f * density; isFakeBoldText = true
+    }
+    val top = 17f * density
+    p.textAlign = Paint.Align.RIGHT
+    canvas.drawText("الجزء " + JUZ_NAMES[Quran.juzOfPage(pageNo) - 1], width - 14f * density, top, p)
+    p.textAlign = Paint.Align.LEFT
+    canvas.drawText(Quran.surahs[Quran.firstAyah(pageNo)[0] - 1].name, 14f * density, top, p)
+    val y = height - 8f * density
+    val num = pageNo.ar()
+    p.textAlign = Paint.Align.CENTER; p.color = c.ink.toArgb()
+    val nw = p.measureText(num) + 18f * density
+    val box = RectF(width / 2 - nw / 2, y - 14f * density, width / 2 + nw / 2, y + 5f * density)
+    val fr = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 1.5f * density; color = c.frame.toArgb() }
+    canvas.drawRoundRect(box, box.height() / 2, box.height() / 2, fr)
+    canvas.drawText(num, width / 2, y, p)
+    p.color = c.muted.toArgb(); p.textAlign = Paint.Align.RIGHT
+    canvas.drawText(hizbLabel(pageNo), box.left - 8f * density, y, p)
 }

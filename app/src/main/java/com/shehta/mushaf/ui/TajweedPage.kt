@@ -29,7 +29,6 @@ import com.shehta.mushaf.data.Line
 import com.shehta.mushaf.data.Page
 import com.shehta.mushaf.data.Quran
 import com.shehta.mushaf.data.TajweedRules
-import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
 
@@ -37,6 +36,7 @@ import kotlin.math.min
 private class TUnit(val s: Int, val a: Int, val text: String, val spans: IntArray, val marker: Boolean) {
     var width = 0f
     var left = 0f
+    var inkLeft = 0f          // where the word starts inside its (wide) layout
     var layout: StaticLayout? = null
 }
 
@@ -81,6 +81,7 @@ fun TajweedPage(
             drawIntoCanvas { cv ->
                 val canvas = cv.nativeCanvas
                 for (f in laid.frames) if (f.kind == 0) drawHeader(canvas, f, colors) else drawBasmala(canvas, f, colors)
+                drawPageInfo(canvas, page.number, size.width, size.height, colors, density)
                 val bg = Paint(Paint.ANTI_ALIAS_FLAG)
                 val mk = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = pageFont; textSize = laid.markerPx; color = colors.marker.toArgb() }
                 for (line in laid.lines) {
@@ -101,7 +102,7 @@ fun TajweedPage(
                         } else {
                             val lay = u.layout ?: continue
                             canvas.save()
-                            canvas.translate(u.left, (line.top + line.bottom) / 2 - lay.height / 2f)
+                            canvas.translate(u.left - u.inkLeft, (line.top + line.bottom) / 2 - lay.height / 2f)
                             lay.draw(canvas)
                             canvas.restore()
                         }
@@ -144,15 +145,35 @@ private fun layoutTajweed(page: Page, pageFont: Typeface, w: Float, h: Float, re
         full[li] = !special && qw > Quran.maxLine * 0.9f
     }
 
-    // one font size for the page: the widest line (words + a small gap) must fit
+    val tp = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Quran.hafsFont; color = ink }
+    val mkp = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = pageFont }
+    fun build(u: TUnit) {
+        if (u.marker) { u.width = mkp.measureText(u.text); return }
+        val sp = SpannableString(u.text)
+        var i = 0
+        while (i + 2 < u.spans.size) {
+            val st = u.spans[i + 1].coerceIn(0, u.text.length); val en = u.spans[i + 2].coerceIn(st, u.text.length)
+            if (en > st) sp.setSpan(ForegroundColorSpan(c.tajweed[TajweedRules.group(u.spans[i])].toArgb()), st, en, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            i += 3
+        }
+        // laid out on a very wide single line so a word can never be broken; its real extent is read back
+        val lay = StaticLayout.Builder.obtain(sp, 0, sp.length, tp, WIDE)
+            .setTextDirection(TextDirectionHeuristics.RTL).setIncludePad(true).setMaxLines(1)
+            .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
+            .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE).build()
+        u.layout = lay
+        u.inkLeft = lay.getLineLeft(0)
+        u.width = lay.getLineRight(0) - lay.getLineLeft(0)
+    }
+
+    // one font size for the page: measured with the real layouts at size 100, the widest line must fit
     val base = 100f
-    val tp = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Quran.hafsFont; textSize = base; color = ink }
-    val mkp = Paint().apply { typeface = pageFont; textSize = base }
+    tp.textSize = base; mkp.textSize = base * MARKER_SCALE
     val gapEm = 0.18f
     var widest = 1f
     for ((_, units) in texts) {
         var sum = 0f
-        for (u in units) sum += if (u.marker) mkp.measureText(u.text) * MARKER_SCALE else Layout.getDesiredWidth(u.text, tp)
+        for (u in units) { build(u); sum += u.width }
         widest = max(widest, sum + gapEm * base * (units.size - 1))
     }
     val fontPx = min(base * contentW / widest, lineH * 0.46f)
@@ -161,23 +182,10 @@ private fun layoutTajweed(page: Page, pageFont: Typeface, w: Float, h: Float, re
 
     val lines = ArrayList<TLine>()
     for ((li, units) in texts) {
-        for (u in units) {
-            if (u.marker) { u.width = mkp.measureText(u.text); continue }
-            val sp = SpannableString(u.text)
-            var i = 0
-            while (i + 2 < u.spans.size) {
-                val st = u.spans[i + 1].coerceIn(0, u.text.length); val en = u.spans[i + 2].coerceIn(st, u.text.length)
-                if (en > st) sp.setSpan(ForegroundColorSpan(c.tajweed[TajweedRules.group(u.spans[i])].toArgb()), st, en, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                i += 3
-            }
-            val wd = ceil(Layout.getDesiredWidth(sp, tp)).toInt() + 1
-            u.layout = StaticLayout.Builder.obtain(sp, 0, sp.length, tp, wd)
-                .setTextDirection(TextDirectionHeuristics.RTL).setIncludePad(true).setMaxLines(1).build()
-            u.width = wd.toFloat()
-        }
+        for (u in units) build(u)
         val total = units.sumOf { it.width.toDouble() }.toFloat()
         val n = units.size
-        val gap = if (full[li] == true && n > 1) (contentW - total) / (n - 1) else gapEm * fontPx
+        val gap = if (full[li] == true && n > 1) max(0f, (contentW - total) / (n - 1)) else gapEm * fontPx
         var x = if (full[li] == true && n > 1) left + contentW else left + contentW / 2 + (total + gap * (n - 1)) / 2
         for (u in units) { x -= u.width; u.left = x; x -= gap }
         val top = startY + li * lineH
@@ -197,3 +205,4 @@ private fun layoutTajweed(page: Page, pageFont: Typeface, w: Float, h: Float, re
 
 /** The page-font ayah number next to text of the Hafs font: QCF glyphs are drawn smaller per em. */
 private const val MARKER_SCALE = 1.25f
+private const val WIDE = 100000

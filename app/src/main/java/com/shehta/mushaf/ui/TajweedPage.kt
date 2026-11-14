@@ -4,12 +4,9 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.text.Layout
-import android.text.SpannableString
-import android.text.Spanned
 import android.text.StaticLayout
 import android.text.TextDirectionHeuristics
 import android.text.TextPaint
-import android.text.style.ForegroundColorSpan
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -38,11 +35,14 @@ private class TUnit(val s: Int, val a: Int, val text: String, val spans: IntArra
     var left = 0f
     var inkLeft = 0f          // where the word starts inside its (wide) layout
     var layout: StaticLayout? = null
+    /** x-ranges (inside the layout) of whole letters to paint in a rule colour: [x0, x1]* with colours[i] */
+    var colored: FloatArray = FloatArray(0)
+    var colors: IntArray = IntArray(0)
 }
 
 private class TLine(val top: Float, val bottom: Float, val units: List<TUnit>)
 
-private class TLaid(val lines: List<TLine>, val frames: List<Frame>, val fontPx: Float, val markerPx: Float, val lineH: Float)
+private class TLaid(val lines: List<TLine>, val frames: List<Frame>, val fontPx: Float, val markerPx: Float, val lineH: Float, val paint: TextPaint, val ink: Int)
 
 /**
  * Coloured tajweed page with EXACTLY the lines of the printed Madinah Mushaf (QCF V2 layout): every line holds the
@@ -103,7 +103,20 @@ fun TajweedPage(
                             val lay = u.layout ?: continue
                             canvas.save()
                             canvas.translate(u.left - u.inkLeft, (line.top + line.bottom) / 2 - lay.height / 2f)
+                            // the word is always drawn whole (so letters and marks are shaped by the font exactly as
+                            // written); colours are painted by redrawing it clipped to the coloured letters
+                            laid.paint.color = laid.ink
                             lay.draw(canvas)
+                            var k = 0
+                            while (k < u.colors.size) {
+                                canvas.save()
+                                canvas.clipRect(u.colored[2 * k], -lay.height.toFloat(), u.colored[2 * k + 1], lay.height * 2f)
+                                laid.paint.color = u.colors[k]
+                                lay.draw(canvas)
+                                canvas.restore()
+                                k++
+                            }
+                            laid.paint.color = laid.ink
                             canvas.restore()
                         }
                     }
@@ -149,21 +162,30 @@ private fun layoutTajweed(page: Page, pageFont: Typeface, w: Float, h: Float, re
     val mkp = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = pageFont }
     fun build(u: TUnit) {
         if (u.marker) { u.width = mkp.measureText(u.text); return }
-        val sp = SpannableString(u.text)
-        var i = 0
-        while (i + 2 < u.spans.size) {
-            val st = u.spans[i + 1].coerceIn(0, u.text.length); val en = u.spans[i + 2].coerceIn(st, u.text.length)
-            if (en > st) sp.setSpan(ForegroundColorSpan(c.tajweed[TajweedRules.group(u.spans[i])].toArgb()), st, en, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-            i += 3
-        }
         // laid out on a very wide single line so a word can never be broken; its real extent is read back
-        val lay = StaticLayout.Builder.obtain(sp, 0, sp.length, tp, WIDE)
+        val lay = StaticLayout.Builder.obtain(u.text, 0, u.text.length, tp, WIDE)
             .setTextDirection(TextDirectionHeuristics.RTL).setIncludePad(true).setMaxLines(1)
             .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
             .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE).build()
         u.layout = lay
         u.inkLeft = lay.getLineLeft(0)
         u.width = lay.getLineRight(0) - lay.getLineLeft(0)
+        // each rule colours whole letters: the span is widened to the letter it sits on and that letter's marks
+        val out = ArrayList<Float>(); val cols = ArrayList<Int>()
+        val t = u.text
+        fun isMark(ch: Char) = Character.getType(ch).let { it == Character.NON_SPACING_MARK.toInt() || it == Character.ENCLOSING_MARK.toInt() }
+        var i = 0
+        while (i + 2 < u.spans.size) {
+            var st = u.spans[i + 1].coerceIn(0, t.length); var en = u.spans[i + 2].coerceIn(st, t.length)
+            while (st > 0 && st < t.length && isMark(t[st])) st--
+            while (en < t.length && isMark(t[en])) en++
+            if (en > st) {
+                val xa = lay.getPrimaryHorizontal(st); val xb = lay.getPrimaryHorizontal(en)
+                if (xa != xb) { out += min(xa, xb); out += max(xa, xb); cols += c.tajweed[TajweedRules.group(u.spans[i])].toArgb() }
+            }
+            i += 3
+        }
+        u.colored = out.toFloatArray(); u.colors = cols.toIntArray()
     }
 
     // one font size for the page: measured with the real layouts at size 100, the widest line must fit
@@ -200,7 +222,7 @@ private fun layoutTajweed(page: Page, pageFont: Typeface, w: Float, h: Float, re
             else -> {}
         }
     }
-    return TLaid(lines, frames, fontPx, markerPx, lineH)
+    return TLaid(lines, frames, fontPx, markerPx, lineH, tp, ink)
 }
 
 /** The page-font ayah number next to text of the Hafs font: QCF glyphs are drawn smaller per em. */

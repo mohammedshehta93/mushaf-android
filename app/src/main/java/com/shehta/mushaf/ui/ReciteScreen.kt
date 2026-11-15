@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -80,7 +81,12 @@ import kotlinx.coroutines.launch
 
 // ===================================================================================================== speech
 
-/** Keeps Android's speech recogniser listening (it stops after each pause) and reports words as they come. */
+/**
+ * Listens to the reciter.
+ *  - Android 13+ with the on-device recogniser: ONE continuous «segmented» session — no restarts, no beeps.
+ *  - Otherwise: the classic recogniser, restarted after each pause; the media volume is muted while listening so the
+ *    start chime is not heard, and after repeated failures it stops and says why instead of looping.
+ */
 private class RecitationListener(
     private val context: Context,
     private val onWords: (tokens: List<String>, final: Boolean) -> Unit,
@@ -88,17 +94,27 @@ private class RecitationListener(
 ) {
     private var sr: SpeechRecognizer? = null
     private var active = false
+    private var continuous = false
+    private var failures = 0
+    private var mutedVolume = -1
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val audio = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
+    /** set when the on-device Arabic model is missing (the screen offers to download it) */
+    var needsModel = false; private set
 
-    private val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+    private fun intent(segmented: Boolean) = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
         putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
         putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ar-SA")
         putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "ar-SA")
         putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
         putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-        putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
-        putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 4000L)
-        putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 4000L)
+        putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 6000L)
+        putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 6000L)
+        if (segmented && Build.VERSION.SDK_INT >= 33) {
+            // keep one session open for up to 30 minutes, delivering results segment by segment
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 30 * 60_000L)
+            putExtra(RecognizerIntent.EXTRA_SEGMENTED_SESSION, RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS)
+        }
     }
 
     private fun tokens(b: Bundle?): List<String> =
@@ -112,29 +128,97 @@ private class RecitationListener(
         override fun onEndOfSpeech() {}
         override fun onEvent(eventType: Int, params: Bundle?) {}
         override fun onPartialResults(partialResults: Bundle?) { onWords(tokens(partialResults), false) }
-        override fun onResults(results: Bundle?) { onWords(tokens(results), true); restart(150) }
+        override fun onSegmentResults(segmentResults: Bundle) { failures = 0; onWords(tokens(segmentResults), true) }
+        override fun onEndOfSegmentedSession() { if (active) restart(300) }
+        override fun onResults(results: Bundle?) {
+            val t = tokens(results)
+            if (t.isNotEmpty()) failures = 0
+            onWords(t, true)
+            restart(250)
+        }
         override fun onError(error: Int) {
             onWords(emptyList(), true)
             when (error) {
                 SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> { stop(); onStatus(false, "اسمح للتطبيق باستخدام الميكروفون.") }
-                SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT, SpeechRecognizer.ERROR_SERVER ->
-                    { onStatus(active, "تعذّر الاتصال بخدمة التعرّف على الكلام. نزّل اللغة العربية للاستخدام بدون إنترنت من إعدادات «التعرّف على الكلام» في جوجل."); restart(1500) }
-                SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> restart(500)
-                else -> restart(200)          // no match / speech timeout: keep listening
+                12, 13 -> {                       // language not supported / not downloaded (on-device)
+                    if (continuous) { needsModel = true; switchToClassic() }
+                    else { stop(); onStatus(false, "العربية غير متاحة في خدمة التعرّف على الكلام على هذا الهاتف.") }
+                }
+                SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT, SpeechRecognizer.ERROR_SERVER -> fail(
+                    "لا يوجد اتصال بخدمة التعرّف على الكلام. اتصل بالإنترنت، أو نزّل العربية للاستخدام بدون إنترنت.")
+                SpeechRecognizer.ERROR_CLIENT, SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> { recreate(); fail(null) }
+                else -> fail(null)                // no match / speech timeout
             }
         }
     }
 
+    private fun fail(message: String?) {
+        failures++
+        if (failures >= 4) {
+            stop()
+            onStatus(false, message ?: "لم أسمع قراءة واضحة. اقرأ بصوت أعلى قريبًا من الهاتف، ثم اضغط الميكروفون من جديد.")
+        } else restart(if (message != null) 1500 else 400)
+    }
+
+    private fun create(onDevice: Boolean) {
+        try { sr?.destroy() } catch (e: Exception) { }
+        sr = (if (onDevice && Build.VERSION.SDK_INT >= 31) SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
+              else SpeechRecognizer.createSpeechRecognizer(context)).also { it.setRecognitionListener(listener) }
+    }
+
+    private fun recreate() { create(continuous) }
+
     fun start() {
         if (active) return
-        active = true
-        sr = SpeechRecognizer.createSpeechRecognizer(context).also { it.setRecognitionListener(listener) }
-        sr?.startListening(intent)
+        active = true; failures = 0
+        continuous = Build.VERSION.SDK_INT >= 33 && SpeechRecognizer.isOnDeviceRecognitionAvailable(context) && !needsModel
+        create(continuous)
+        if (!continuous) mute(true)
+        try { sr?.startListening(intent(continuous)) } catch (e: Exception) { fail(null) }
+    }
+
+    private fun switchToClassic() {
+        continuous = false
+        create(false)
+        mute(true)
+        restart(300)
     }
 
     private fun restart(delayMs: Long) {
         if (!active) return
-        handler.postDelayed({ if (active) try { sr?.startListening(intent) } catch (e: Exception) { } }, delayMs)
+        handler.removeCallbacksAndMessages(null)
+        handler.postDelayed({ if (active) try { sr?.startListening(intent(continuous)) } catch (e: Exception) { recreate() } }, delayMs)
+    }
+
+    /** Mutes the media stream (the recogniser's start chime) while listening with the classic recogniser. */
+    fun mute(on: Boolean) {
+        try {
+            if (on && mutedVolume < 0) {
+                mutedVolume = audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
+                audio.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, android.media.AudioManager.ADJUST_MUTE, 0)
+            } else if (!on && mutedVolume >= 0) {
+                audio.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, android.media.AudioManager.ADJUST_UNMUTE, 0)
+                mutedVolume = -1
+            }
+        } catch (e: Exception) { }
+    }
+
+    /** Plays a word's sound: briefly unmutes. */
+    fun withSound(block: () -> Unit) {
+        val wasMuted = mutedVolume >= 0
+        if (wasMuted) mute(false)
+        block()
+        if (wasMuted && active) handler.postDelayed({ if (active && !continuous) mute(true) }, 2500)
+    }
+
+    /** Android 13+: asks the system to download the Arabic on-device model. */
+    fun downloadModel() {
+        if (Build.VERSION.SDK_INT >= 33) try {
+            val r = SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
+            r.triggerModelDownload(intent(false))
+            handler.postDelayed({ try { r.destroy() } catch (e: Exception) { } }, 3000)
+            needsModel = false
+        } catch (e: Exception) { }
     }
 
     fun stop() {
@@ -142,6 +226,7 @@ private class RecitationListener(
         handler.removeCallbacksAndMessages(null)
         try { sr?.cancel(); sr?.destroy() } catch (e: Exception) { }
         sr = null
+        mute(false)
         onStatus(false, null)
     }
 }
@@ -150,7 +235,7 @@ private class RecitationListener(
 
 private class ReciteRange(val label: String, val words: List<ExpectedWord>, val pages: IntArray)
 
-private fun buildRange(label: String, pages: IntRange, surah: Int = 0): ReciteRange {
+private fun buildRange(label: String, pages: IntRange, surah: Int = 0, keep: (Int, Int) -> Boolean = { _, _ -> true }): ReciteRange {
     val out = ArrayList<ExpectedWord>(); val pg = ArrayList<Int>()
     val seen = HashSet<String>()
     val cache = HashMap<String, Map<Int, String>>()
@@ -158,7 +243,7 @@ private fun buildRange(label: String, pages: IntRange, surah: Int = 0): ReciteRa
         for (l in Quran.page(p).lines) {
             if (l !is Line.Text) continue
             for (t in l.tokens) {
-                if (t.w == 0 || (surah > 0 && t.s != surah)) continue
+                if (t.w == 0 || (surah > 0 && t.s != surah) || !keep(t.s, t.a)) continue
                 val k = "${t.s}:${t.a}:${t.w}"
                 if (!seen.add(k)) continue
                 val text = cache.getOrPut("${t.s}:${t.a}") { Quran.ayahWords(t.s, t.a) }[t.w] ?: continue
@@ -186,15 +271,20 @@ fun ReciteScreen(c: MushafColors, prefs: Prefs, currentPage: Int, review: Boolea
     else ReciteSession(c, prefs, plan, s.first, s.second, s.third, onBack = { session = null })
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ReciteSetup(c: MushafColors, plan: ReviewPlan, currentPage: Int, review: Boolean, onBack: () -> Unit,
                         onStart: (ReciteRange, Int, Float) -> Unit) {
     val context = LocalContext.current
     val due = remember { plan.due() }
-    var kind by remember { mutableIntStateOf(if (review && due.isNotEmpty()) 3 else 0) }     // 0 page, 1 surah, 2 pages, 3 review
+    var kind by remember { mutableIntStateOf(if (review && due.isNotEmpty()) 4 else 0) }     // 0 page, 1 surah, 2 juz, 3 pages, 4 review
     var surah by remember { mutableIntStateOf(Quran.firstAyah(currentPage)[0]) }
-    var from by remember { mutableIntStateOf(currentPage) }
-    var to by remember { mutableIntStateOf(currentPage) }
+    var fromA by remember { mutableStateOf("1") }
+    var toA by remember { mutableStateOf(Quran.surahs[surah - 1].ayahs.toString()) }
+    var juz by remember { mutableIntStateOf(Quran.juzOfPage(currentPage)) }
+    var fromP by remember { mutableStateOf(currentPage.toString()) }
+    var toP by remember { mutableStateOf(currentPage.toString()) }
+    var picking by remember { mutableStateOf(false) }
     var mode by remember { mutableIntStateOf(MODE_PROMPT) }
     var strict by remember { mutableIntStateOf(1) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -203,20 +293,37 @@ private fun ReciteSetup(c: MushafColors, plan: ReviewPlan, currentPage: Int, rev
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         if (!ok) error = "التسميع يحتاج إذن الميكروفون."
     }
+    fun num(t: String) = t.filter { it.isDigit() || it in '٠'..'٩' }.map { if (it in '٠'..'٩') '0' + (it - '٠') else it }.joinToString("").toIntOrNull()
 
     fun start() {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             permission.launch(Manifest.permission.RECORD_AUDIO); return
         }
+        error = null
         val th = floatArrayOf(0.55f, 0.7f, 0.85f)[strict]
         val r = when (kind) {
-            1 -> { val sp = Quran.surahs[surah - 1].page; val ep = if (surah < 114) Quran.surahs[surah].page else Quran.PAGES
-                   buildRange("سورة ${Quran.surahs[surah - 1].name}", sp..ep, surah) }
-            2 -> buildRange("من صفحة ${minOf(from, to).ar()} إلى ${maxOf(from, to).ar()}", minOf(from, to)..maxOf(from, to))
-            3 -> { val p = due.first(); buildRange("مراجعة اليوم · صفحة ${p.ar()}", p..p) }
+            1 -> {
+                val n = Quran.surahs[surah - 1].ayahs
+                val a1 = (num(fromA) ?: 1).coerceIn(1, n); val a2 = (num(toA) ?: n).coerceIn(a1, n)
+                val label = "سورة ${Quran.surahs[surah - 1].name}" + if (a1 == 1 && a2 == n) "" else " (${a1.ar()}–${a2.ar()})"
+                buildRange(label, Quran.pageOf(surah, a1)..Quran.pageOf(surah, a2), surah) { _, a -> a in a1..a2 }
+            }
+            2 -> {
+                val start = Quran.juz[juz - 1]; val next = Quran.juz.getOrNull(juz)
+                val endPage = next?.page ?: Quran.PAGES
+                fun key(s: Int, a: Int) = s * 1000 + a
+                buildRange("الجزء ${juz.ar()}", start.page..endPage) { s, a ->
+                    key(s, a) >= key(start.s, start.a) && (next == null || key(s, a) < key(next.s, next.a))
+                }
+            }
+            3 -> {
+                val p1 = (num(fromP) ?: currentPage).coerceIn(1, Quran.PAGES); val p2 = (num(toP) ?: p1).coerceIn(1, Quran.PAGES)
+                buildRange("من صفحة ${minOf(p1, p2).ar()} إلى ${maxOf(p1, p2).ar()}", minOf(p1, p2)..maxOf(p1, p2))
+            }
+            4 -> { val p = due.first(); buildRange("مراجعة اليوم · صفحة ${p.ar()}", p..p) }
             else -> buildRange("صفحة ${currentPage.ar()}", currentPage..currentPage)
         }
-        if (r.words.isEmpty()) { error = "لا توجد كلمات في هذا النطاق."; return }
+        if (r.words.isEmpty()) { error = "لا توجد كلمات في هذا الاختيار."; return }
         onStart(r, mode, th)
     }
 
@@ -226,21 +333,37 @@ private fun ReciteSetup(c: MushafColors, plan: ReviewPlan, currentPage: Int, rev
                 Text("خدمة التعرّف على الكلام غير موجودة على هذا الهاتف.", fontWeight = FontWeight.Bold, color = c.mistake)
                 Text("ثبّت أو حدّث تطبيق «Google» من المتجر ثم أعد المحاولة.", fontSize = 14.sp)
             }
-            if (due.isNotEmpty()) Card2(c, Modifier.clickable { kind = 3 }) {
+            if (due.isNotEmpty()) Card2(c, Modifier.clickable { kind = 4 }) {
                 Text("مراجعة اليوم: ${due.size.ar()} صفحة", fontWeight = FontWeight.Bold, color = c.gharib)
                 Text("صفحات حان موعد مراجعتها حسب نتائج تسميعك السابقة.", fontSize = 13.sp, color = c.muted)
             }
             Text("ماذا تُسمّع؟", fontWeight = FontWeight.SemiBold)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FilterChip(kind == 0, { kind = 0 }, { Text("الصفحة ${currentPage.ar()}") })
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                FilterChip(kind == 0, { kind = 0 }, { Text("الصفحة الحالية (${currentPage.ar()})") })
                 FilterChip(kind == 1, { kind = 1 }, { Text("سورة") })
-                FilterChip(kind == 2, { kind = 2 }, { Text("صفحات") })
-                if (due.isNotEmpty()) FilterChip(kind == 3, { kind = 3 }, { Text("المراجعة") })
+                FilterChip(kind == 2, { kind = 2 }, { Text("جزء") })
+                FilterChip(kind == 3, { kind = 3 }, { Text("صفحات") })
+                if (due.isNotEmpty()) FilterChip(kind == 4, { kind = 4 }, { Text("المراجعة") })
             }
-            if (kind == 1) Stepper("السورة", "${surah.ar()}. ${Quran.surahs[surah - 1].name}", { surah = (surah - 1).coerceAtLeast(1) }, { surah = (surah + 1).coerceAtMost(114) })
-            if (kind == 2) {
-                Stepper("من صفحة", from.ar(), { from = (from - 1).coerceAtLeast(1) }, { from = (from + 1).coerceAtMost(Quran.PAGES) })
-                Stepper("إلى صفحة", to.ar(), { to = (to - 1).coerceAtLeast(1) }, { to = (to + 1).coerceAtMost(Quran.PAGES) })
+            when (kind) {
+                1 -> {
+                    OutlinedButton(onClick = { picking = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text("${surah.ar()}. سورة ${Quran.surahs[surah - 1].name}  ▾", fontSize = 17.sp)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        NumField("من آية", fromA, Modifier.weight(1f)) { fromA = it }
+                        NumField("إلى آية", toA, Modifier.weight(1f)) { toA = it }
+                    }
+                    Text("السورة فيها ${Quran.surahs[surah - 1].ayahs.ar()} آية — اترك الحقلين كما هما لتسميع السورة كلها.", fontSize = 12.sp, color = c.muted)
+                }
+                2 -> FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    for (j in 1..30) FilterChip(juz == j, { juz = j }, { Text(j.ar()) })
+                }
+                3 -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    NumField("من صفحة", fromP, Modifier.weight(1f)) { fromP = it }
+                    NumField("إلى صفحة", toP, Modifier.weight(1f)) { toP = it }
+                }
+                else -> {}
             }
             Text("الطريقة", fontWeight = FontWeight.SemiBold)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -250,7 +373,7 @@ private fun ReciteSetup(c: MushafColors, plan: ReviewPlan, currentPage: Int, rev
             }
             Text(when (mode) {
                 MODE_FREE -> "لا تلقين ولا تنبيه أثناء القراءة؛ تظهر الأخطاء في النهاية."
-                MODE_TEST -> "يختار التطبيق آية من النطاق ويقول لك «أكمل من هنا» لثلاث آيات."
+                MODE_TEST -> "يختار التطبيق آية من اختيارك ويقول لك «أكمل من هنا» لثلاث آيات."
                 else -> "تظهر كل كلمة صحيحة في مكانها، ويُنبّهك عند الخطأ، ويلقّنك إن توقفت."
             }, fontSize = 13.sp, color = c.muted)
             Text("الدقة", fontWeight = FontWeight.SemiBold)
@@ -262,21 +385,45 @@ private fun ReciteSetup(c: MushafColors, plan: ReviewPlan, currentPage: Int, rev
             Card2(c) {
                 Text("قبل أن تبدأ", fontWeight = FontWeight.Bold)
                 Text("• التسميع يكشف الكلمة الخطأ والكلمة الناقصة والتوقف، ولا يكشف أخطاء التشكيل ولا أحكام التجويد؛ فهذه تحتاج شيخًا.\n" +
-                    "• يعمل بخدمة التعرّف على الكلام في هاتفك. لا يُحفظ أي تسجيل ولا يُرسل إلينا. للعمل بدون إنترنت نزّل «العربية» من إعدادات التعرّف على الكلام في جوجل؛ وإلا تعالج جوجل الصوت عندها.\n" +
+                    "• يعمل بخدمة التعرّف على الكلام في هاتفك، ولا يُحفظ أي تسجيل ولا يُرسل إلينا. أفضل تجربة (بدون إنترنت وبدون أصوات تنبيه) بعد تنزيل «العربية» للتعرّف على الكلام على الجهاز.\n" +
                     "• اقرأ بصوت واضح وبسرعة معتدلة؛ إن أخطأ التطبيق في كلمة صحيحة فاختر «متساهل».",
                     fontSize = 13.sp, lineHeight = 22.sp, color = c.muted)
             }
         }
     }
+    if (picking) SurahPicker(c, onPick = { surah = it; fromA = "1"; toA = Quran.surahs[it - 1].ayahs.toString(); picking = false }, onDismiss = { picking = false })
 }
 
 @Composable
-private fun Stepper(label: String, value: String, onMinus: () -> Unit, onPlus: () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(label, modifier = Modifier.width(80.dp))
-        OutlinedButton(onClick = onMinus) { Text("−") }
-        Text(value, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f).padding(horizontal = 8.dp))
-        OutlinedButton(onClick = onPlus) { Text("+") }
+private fun NumField(label: String, value: String, modifier: Modifier, onChange: (String) -> Unit) {
+    androidx.compose.material3.OutlinedTextField(value, { onChange(it.take(4)) }, modifier, singleLine = true, label = { Text(label) },
+        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number))
+}
+
+/** Searchable list of the 114 surahs. */
+@Composable
+private fun SurahPicker(c: MushafColors, onPick: (Int) -> Unit, onDismiss: () -> Unit) {
+    var q by remember { mutableStateOf("") }
+    val shown = remember(q) {
+        val nq = com.shehta.mushaf.data.ArabicText.normalize(q)
+        Quran.surahs.filter { nq.isEmpty() || com.shehta.mushaf.data.ArabicText.normalize(it.name).contains(nq) || it.n.toString() == q.trim() }
+    }
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp)) {
+                androidx.compose.material3.OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth(), singleLine = true,
+                    placeholder = { Text("اكتب اسم السورة أو رقمها") })
+                LazyColumn(Modifier.padding(top = 6.dp).fillMaxWidth().heightIn(max = 420.dp)) {
+                    items(shown) { su ->
+                        Row(Modifier.fillMaxWidth().clickable { onPick(su.n) }.padding(vertical = 10.dp, horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(su.n.ar(), color = c.gharib, fontWeight = FontWeight.Bold, modifier = Modifier.width(40.dp))
+                            Text("سورة ${su.name}", fontSize = 17.sp, modifier = Modifier.weight(1f))
+                            Text("${su.ayahs.ar()} آية · ص ${su.page.ar()}", fontSize = 12.sp, color = c.muted)
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -364,7 +511,7 @@ private fun ReciteSession(c: MushafColors, prefs: Prefs, plan: ReviewPlan, range
         if (matcher.done) return@LaunchedEffect
         matcher.giveCurrent(); tick++
         hint = "الكلمة: ${w.text}"
-        AudioEngine.playWord(w.s, w.a, w.w) { }
+        listener.withSound { AudioEngine.playWord(w.s, w.a, w.w) { } }
         if (matcher.done) finished = true
     }
 
@@ -391,7 +538,7 @@ private fun ReciteSession(c: MushafColors, prefs: Prefs, plan: ReviewPlan, range
                     for (i in idxs) {
                         if (mode == MODE_TEST && i < startIdx - 12) continue
                         WordChip(c, words[i].text, displayState(matcher.state[i], mode), i == matcher.pos) {
-                            AudioEngine.playWord(words[i].s, words[i].a, words[i].w) { }
+                            listener.withSound { AudioEngine.playWord(words[i].s, words[i].a, words[i].w) { } }
                         }
                     }
                     val last = words[idxs.last()]
@@ -402,7 +549,10 @@ private fun ReciteSession(c: MushafColors, prefs: Prefs, plan: ReviewPlan, range
         Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 8.dp) {
             Column(Modifier.fillMaxWidth().padding(12.dp).navigationBarsPadding(), horizontalAlignment = Alignment.CenterHorizontally) {
                 if (hint.isNotEmpty()) Text(hint, fontWeight = FontWeight.Bold, color = c.gharib, fontSize = 17.sp)
-                status?.let { Text(it, fontSize = 12.sp, color = c.mistake) }
+                status?.let { Text(it, fontSize = 13.sp, color = c.mistake) }
+                if (listener.needsModel && Build.VERSION.SDK_INT >= 33) TextButton(onClick = { listener.downloadModel() }) {
+                    Text("نزّل العربية على الهاتف (تسميع بدون إنترنت وبدون أصوات)")
+                }
                 if (heard.isNotEmpty() && mode != MODE_FREE) Text("سمعتُ: $heard", fontSize = 12.sp, color = c.muted, maxLines = 1)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     TextButton(onClick = {

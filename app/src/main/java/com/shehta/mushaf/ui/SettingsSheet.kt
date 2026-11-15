@@ -83,13 +83,8 @@ fun SettingsSheet(prefs: Prefs, onDismiss: () -> Unit) {
 
             run {
                 val rp = remember { ReadingPrefs(context) }
-                var every by remember { mutableIntStateOf(rp.tadabburEvery) }
-                Label("وقفات التدبّر أثناء القراءة")
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf(3 to "كل ٣ صفحات", 5 to "كل ٥", 10 to "كل ١٠", 0 to "إيقاف").forEach { (v, n) ->
-                        FilterChip(selected = every == v, onClick = { every = v; rp.updateTadabburEvery(v) }, label = { Text(n) })
-                    }
-                }
+                Label("النوايا والتدبّر")
+                IntentionOptions(mushafColors(prefs.theme), rp)
             }
 
             Label("طريقة العرض")

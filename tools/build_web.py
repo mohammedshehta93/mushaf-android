@@ -32,15 +32,16 @@ def main():
     if os.path.exists(OUT): shutil.rmtree(OUT)
     shutil.copytree(web, OUT)
     # service worker cache version
-    sw = os.path.join(OUT, "sw.js")
-    open(sw, "w").write(open(sw).read().replace("__VERSION__", version))
+    for f in (os.path.join(OUT, "sw.js"), os.path.join(OUT, "index.html")):
+        txt = open(f, encoding="utf-8").read()          # read first: opening for writing truncates the file
+        open(f, "w", encoding="utf-8").write(txt.replace("__VERSION__", version))
 
     # data (only what the web version uses)
     data = os.path.join(OUT, "data")
     os.makedirs(data)
-    for f in ["meta.json", "gharib.json", "text.json", "reciters.json"]:
+    for f in ["meta.json", "gharib.json", "text.json", "reciters.json", "reading.json", "whatsnew.json"]:
         shutil.copy(os.path.join(A, f), data)
-    for d in ["pages", "tafsir", "muslim", "listen", "learn"]:
+    for d in ["pages", "tafsir", "muslim", "listen", "learn", "english"]:
         shutil.copytree(os.path.join(A, d), os.path.join(data, d))
 
     # fonts: the QCF V2 page fonts are already WOFF2 (prepared by prepare_data.py); the official Hafs font and the
@@ -53,7 +54,7 @@ def main():
         f = TTFont(src); f.flavor = "woff2"; f.save(f"{fonts}/{dst}")
 
     # files for "download the Mushaf for offline use" (tafsir stays on-demand)
-    offline = ["data/learn/library.json", "data/learn/tajweed.json", "data/gharib.json", "data/text.json", "data/muslim/azkar.json", "data/muslim/hadith_daily.json", "data/muslim/names.json"]
+    offline = ["data/reading.json", "data/learn/library.json", "data/learn/tajweed.json", "data/gharib.json", "data/text.json", "data/muslim/azkar.json", "data/muslim/hadith_daily.json", "data/muslim/names.json"]
     offline += [f"data/pages/{n}.json" for n in range(1, 605)] + [f"fonts/p{n}.woff2" for n in range(1, 605)]
     for f in offline:
         if not os.path.exists(os.path.join(OUT, f)): raise SystemExit(f"ERROR: missing {f}")

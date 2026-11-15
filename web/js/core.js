@@ -121,6 +121,7 @@ export function library() {
       return {
         hidden,
         podcastTopics: lib.podcastTopics || [],
+        english: lib.english || b.english || {},
         sheikhGroups: groups(lib.sheikhGroups, 'sheikhs', (it) => it.n),
         poemGroups: groups(lib.poemGroups, 'poems', (it) => `${it.n} ${it.a || ''}`).map((g) => ({
           ...g,

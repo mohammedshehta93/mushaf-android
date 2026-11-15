@@ -44,23 +44,21 @@ import com.shehta.mushaf.data.ar
 /** Settings for intentions and tadabbur reminders. */
 class ReadingPrefs(context: Context) {
     private val sp = context.getSharedPreferences("mushaf", Context.MODE_PRIVATE)
-    var intentionsSeen: Boolean
-        get() = sp.getBoolean("intentionsSeen", false)
-        set(v) = sp.edit().putBoolean("intentionsSeen", v).apply()
-    var intentionsDaily by mutableStateOf(sp.getBoolean("intentionsDaily", false)); private set
-    fun updateIntentionsDaily(v: Boolean) { intentionsDaily = v; sp.edit().putBoolean("intentionsDaily", v).apply() }
+    /** When to show the intentions as reading starts: 0 never, 1 once a day (default), 2 every time. */
+    var intentionsMode by mutableStateOf(sp.getInt("intentionsMode", 1)); private set
+    fun updateIntentionsMode(v: Int) { intentionsMode = v; sp.edit().putInt("intentionsMode", v).apply() }
     var lastIntentionsDay: Int
         get() = sp.getInt("intentionsDay", 0)
         set(v) = sp.edit().putInt("intentionsDay", v).apply()
-    /** Show a tadabbur reminder every N pages turned (0 = off). */
-    val tadabburEvery: Int get() = sp.getInt("tadabburEvery", 5)
-    fun updateTadabburEvery(v: Int) { sp.edit().putInt("tadabburEvery", v).apply() }
+    /** One tadabbur reminder when reading starts (no repeated reminders). */
+    var tadabburOnStart by mutableStateOf(sp.getBoolean("tadabburOnStart", true)); private set
+    fun updateTadabburOnStart(v: Boolean) { tadabburOnStart = v; sp.edit().putBoolean("tadabburOnStart", v).apply() }
     var reminderIndex: Int
         get() = sp.getInt("tadabburIdx", 0)
         set(v) = sp.edit().putInt("tadabburIdx", v).apply()
 
     fun today(): Int = java.util.Calendar.getInstance().let { it.get(java.util.Calendar.YEAR) * 400 + it.get(java.util.Calendar.DAY_OF_YEAR) }
-    fun shouldShowIntentions(): Boolean = !intentionsSeen || (intentionsDaily && lastIntentionsDay != today())
+    fun shouldShowIntentions(): Boolean = intentionsMode == 2 || (intentionsMode == 1 && lastIntentionsDay != today())
 }
 
 /** A hadith with its source and (when available) its explanation, lessons and word meanings. */
@@ -105,7 +103,7 @@ fun RItemView(c: MushafColors, item: RItem, onGo: ((Int, Int) -> Unit)?) {
 
 @Composable
 fun IntentionsScreen(c: MushafColors, rp: ReadingPrefs, onDone: () -> Unit) {
-    val done = { rp.intentionsSeen = true; rp.lastIntentionsDay = rp.today(); onDone() }
+    val done = { rp.lastIntentionsDay = rp.today(); onDone() }
     var open by remember { mutableStateOf<Int?>(null) }
     ScreenScaffold("نوايا قبل القراءة", c, done, subtitle = "«إنما الأعمال بالنيات» — متفق عليه") {
         LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -125,12 +123,7 @@ fun IntentionsScreen(c: MushafColors, rp: ReadingPrefs, onDone: () -> Unit) {
                     }
                 }
             }
-            item {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { rp.updateIntentionsDaily(!rp.intentionsDaily) }) {
-                    androidx.compose.material3.Checkbox(checked = rp.intentionsDaily, onCheckedChange = { rp.updateIntentionsDaily(it) })
-                    Text("ذكّرني بالنوايا كل يوم عند أول فتح للتطبيق")
-                }
-            }
+            item { Column { IntentionOptions(c, rp) } }
         }
         Button(onClick = done, modifier = Modifier.fillMaxWidth().padding(14.dp).navigationBarsPadding()) { Text("بسم الله، ابدأ القراءة", fontSize = 17.sp) }
     }
@@ -202,4 +195,39 @@ fun HadithLibraryScreen(c: MushafColors, onBack: () -> Unit) {
             items(shown.take(300)) { i -> Card2(c) { HadithBody(c, all[i], 16) } }
         }
     }
+}
+
+/** Choices shared by the intentions screen and the settings. */
+@Composable
+fun IntentionOptions(c: MushafColors, rp: ReadingPrefs) {
+    Text("متى تظهر النوايا عند بدء القراءة؟", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        listOf(1 to "مرة يوميًا", 2 to "كل مرة", 0 to "لا تظهر").forEach { (v, n) ->
+            androidx.compose.material3.FilterChip(selected = rp.intentionsMode == v, onClick = { rp.updateIntentionsMode(v) }, label = { Text(n) })
+        }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { rp.updateTadabburOnStart(!rp.tadabburOnStart) }) {
+        androidx.compose.material3.Checkbox(checked = rp.tadabburOnStart, onCheckedChange = { rp.updateTadabburOnStart(it) })
+        Text("وقفة تدبّر واحدة عند بدء القراءة")
+    }
+}
+
+/** Shown once after every update. Items: assets/quran/whatsnew.json (tools/content/whatsnew.json). */
+@Composable
+fun WhatsNewDialog(onDismiss: () -> Unit) {
+    val data = remember {
+        try { org.json.JSONObject(com.shehta.mushaf.data.Quran.asset("whatsnew.json")) } catch (e: Exception) { null }
+    }
+    val items = remember(data) { data?.optJSONArray("items")?.let { a -> List(a.length()) { a.getString(it) } } ?: emptyList() }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(data?.optString("title")?.ifEmpty { null } ?: "تحديث جديد", fontWeight = FontWeight.Bold) },
+        text = {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                item { Text("الإصدار ${com.shehta.mushaf.BuildConfig.VERSION_NAME}", fontSize = 13.sp) }
+                items(items) { Text("• $it", fontSize = 15.sp, lineHeight = 24.sp) }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("تمام") } },
+    )
 }

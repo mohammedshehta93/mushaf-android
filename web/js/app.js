@@ -1,6 +1,7 @@
 // المصحف — web version (iPhone / any browser). Same data and fonts as the Android app.
 import { $, $$, ar, esc, store, json, font, loadMeta, normalize, toast, ui, isIOS, standalone, library } from './core.js';
 import { openHome, prayerChip } from './tools.js';
+import { startReading, intentionOptionsHtml, handleIntentionOption, whatsNew } from './extra.js';
 
 const PAGES = 604;
 // QCF V2 (the current Madinah print). meta.maxLine = widest line of the whole Mushaf at size 100 (measured at build).
@@ -123,7 +124,9 @@ function ensureAround(n) {
   $$('.page[data-state="done"]', pager).forEach((el) => { if (Math.abs(+el.dataset.n - n) > 4) unrender(el); });
 }
 
+let pageChanges = 0;
 function onPageChange(n) {
+  if (n !== current && ++pageChanges >= 1 && meta) startReading();   // intentions + one tadabbur reminder when reading starts
   current = n; store.set('page', n);
   ensureAround(n);
   if (selection && pageOf(selection.s, selection.a) !== n) { selection = null; hideMeaning(); decorate(); }
@@ -134,6 +137,7 @@ export function goTo(n, sel = null) {
   n = Math.max(1, Math.min(PAGES, n));
   ui.closeScreen(); ui.closeSheet();
   selection = sel;
+  setTimeout(startReading, 400);
   renderPage(pageEl(n), n);
   pageEl(n).scrollIntoView({ block: 'nearest', inline: 'start' });
   onPageChange(n);
@@ -402,6 +406,7 @@ function openSettings() {
     <div class="chips">${[['cream', 'كريمي'], ['white', 'أبيض'], ['night', 'ليلي']].map(([k, n]) => `<button class="chip ${store.get('theme', 'cream') === k ? 'on' : ''}" data-theme="${k}">${n}</button>`).join('')}</div>
     <div class="muted" style="margin-top:10px">حجم خط الصفحة</div>
     <div class="chips">${FONT_NAMES.map((n, i) => `<button class="chip ${store.get('fontStep2', 0) === i ? 'on' : ''}" data-fs="${i}">${n}</button>`).join('')}</div>
+    ${intentionOptionsHtml()}
     <button class="item" data-t="colored"><span class="ic">${store.get('colored', true) ? '☑' : '☐'}</span>تلوين الكلمات الغريبة (اضغط عليها لمعرفة المعنى)</button>
     <button class="item" data-t="follow"><span class="ic">${store.get('follow', true) ? '☑' : '☐'}</span>تقليب الصفحات مع التلاوة</button>
     <button class="item" data-a="offline"><span class="ic">⬇</span><span class="grow">تنزيل المصحف للاستخدام بدون إنترنت<br><span class="muted" data-off>${store.get('offline') ? 'تم التنزيل ✓' : 'حوالي ٢٥ ميجا'}</span></span></button>
@@ -409,6 +414,7 @@ function openSettings() {
     <button class="item" data-a="share"><span class="ic">↗</span>شارك التطبيق</button>
     <p class="muted" style="line-height:1.7">المصادر: صفحات وخطوط مصحف المدينة — مجمع الملك فهد لطباعة المصحف الشريف (رواية حفص). معاني الكلمات: «المُيسَّر في غريب القرآن». التفسير: ابن كثير. التلاوات: everyayah.com. الأذكار: حصن المسلم.</p>`);
   sh.onclick = async (e) => {
+    if (handleIntentionOption(e)) return openSettings();
     const fs = e.target.closest('[data-fs]');
     if (fs) { store.set('fontStep2', +fs.dataset.fs); window.dispatchEvent(new Event('resize')); openSettings(); return; }
     const t = e.target.closest('[data-theme],[data-t],[data-a]'); if (!t) return;
@@ -495,5 +501,6 @@ export const app = { stopAudio: () => { if (player.cur) player.stop(); }, goTo, 
   onPageChange(current);
   $('#splash').style.opacity = 0; setTimeout(() => $('#splash').remove(), 300);
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
-  setTimeout(() => showInstall(), 2500);
+  whatsNew(document.querySelector('meta[name=app-version]')?.content || 'dev');
+  setTimeout(() => { if ($('#sheet').classList.contains('hidden')) showInstall(); }, 2500);
 })();

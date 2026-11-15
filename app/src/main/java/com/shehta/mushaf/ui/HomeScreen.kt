@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Feedback
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.RecordVoiceOver
@@ -145,6 +146,14 @@ fun HomeScreen(mp: MuslimPrefs, c: MushafColors, onBack: () -> Unit, onPick: (St
                     Text(if (hijri.day == 12) "غدًا أول الأيام البيض (١٣–١٥)" else "من الأيام البيض — يُستحب صيامها", fontWeight = FontWeight.SemiBold)
                 }
             }
+            // ---- memorisation review due today
+            item {
+                val due = remember { com.shehta.mushaf.data.ReviewPlan(context).due() }
+                if (due.isNotEmpty()) Card2(c, Modifier.clickable { onPick("review") }) {
+                    Text("مراجعة الحفظ اليوم: ${due.size.ar()} صفحة", fontWeight = FontWeight.Bold, color = c.gharib)
+                    Text("سمّعها الآن — اضغط للبدء", fontSize = 13.sp, color = c.muted)
+                }
+            }
             // ---- hadith of the day
             item {
                 val h = MuslimData.hadithOfDay(hadithOffset)
@@ -166,6 +175,7 @@ fun HomeScreen(mp: MuslimPrefs, c: MushafColors, onBack: () -> Unit, onPick: (St
                     Triple("search", Icons.Filled.Search, "البحث في القرآن"),
                     Triple("tafsir", Icons.Filled.AutoStories, "التفسير"),
                     Triple("tajweed", Icons.Filled.RecordVoiceOver, "تعلّم التجويد"),
+                    Triple("recite", Icons.Filled.Mic, "التسميع"),
                     Triple("hifz", Icons.Filled.Psychology, "الحفظ والمراجعة"),
                     Triple("khatma", Icons.Filled.Event, "الختمة والورد"),
                     Triple("marks", Icons.Filled.Bookmarks, "العلامات"),

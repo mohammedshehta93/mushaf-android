@@ -3,6 +3,14 @@
 
     <!-- Internet: recitation streaming, extra tafsir downloads, in-app updates. The Mushaf itself is fully offline. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- التسميع: speech recognition of the reciter (nothing is recorded or stored) -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />

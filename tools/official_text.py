@@ -134,3 +134,5 @@ def apply(D, OUT, pages, surahs, words_text):
     extras_prep.attach_daily_sharh(OUT, sharh)
     extras_prep.build_reading(D, OUT, sharh) # intentions, tadabbur reminders, virtues — from the official text
     extras_prep.build_english(D, OUT)
+    import shutil, os
+    shutil.copy(os.path.join(os.path.dirname(os.path.abspath(__file__)), "content", "whatsnew.json"), f"{OUT}/whatsnew.json")

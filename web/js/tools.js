@@ -2,6 +2,7 @@
 import { $, $$, ar, esc, store, json, normalize, toast, ui, isIOS, library } from './core.js';
 import { METHODS, NAMES, method, compute, qibla, distanceToKaaba, fmt, CITIES } from './prayer.js';
 import { app } from './app.js';
+import { hadithHtml, openVirtues, openHadithLibrary, openEnglish } from './extra.js';
 
 // ---------------------------------------------------------------- Hijri (Umm al-Qura calendar built into the browser)
 const HMONTHS = ['محرّم', 'صفر', 'ربيع الأول', 'ربيع الآخر', 'جمادى الأولى', 'جمادى الآخرة', 'رجب', 'شعبان', 'رمضان', 'شوّال', 'ذو القعدة', 'ذو الحجة'];
@@ -59,10 +60,11 @@ export function prayerChip() { const n = nextPrayer(); return n ? ` · ${NAMES[n
 
 // ---------------------------------------------------------------- home hub
 const HOME_SECTIONS = [
-  ['القرآن الكريم', [['index', '☰', 'فهرس المصحف'], ['search', '🔍', 'البحث في القرآن'], ['tajweed', '🗣', 'تعلّم التجويد'], ['marks', '🔖', 'العلامات']]],
+  ['القرآن الكريم', [['index', '☰', 'فهرس المصحف'], ['virtues', '💚', 'فضل القرآن'], ['search', '🔍', 'البحث في القرآن'], ['tajweed', '🗣', 'تعلّم التجويد'], ['marks', '🔖', 'العلامات']]],
   ['الصلاة والعبادات اليومية', [['prayer', '🕰', 'مواقيت الصلاة'], ['qibla', '🧭', 'القبلة'], ['azkar', '📿', 'الأذكار'], ['tasbih', '👆', 'السبحة'],
     ['hijri', '🗓', 'التقويم الهجري'], ['ramadan', '🌙', 'رمضان'], ['zakat', '🧮', 'الزكاة']]],
-  ['طلب العلم', [['sheikhs', '🎓', 'الشيوخ والدروس'], ['poems', '📜', 'المتون والمنظومات'], ['names', '✨', 'أسماء الله الحسنى']]],
+  ['طلب العلم', [['sheikhs', '🎓', 'الشيوخ والدروس'], ['poems', '📜', 'المتون والمنظومات'], ['hadiths', '❝', 'أحاديث مشروحة'], ['names', '✨', 'أسماء الله الحسنى']]],
+  ['English', [['english', '🌍', 'English corner']]],
   ['استمع', [['radio', '📻', 'إذاعات القرآن'], ['nasheed', '🎧', 'قصائد ومتون صوتية']]],
   ['التطبيق', [['settings', '⚙', 'الإعدادات'], ['share', '↗', 'شارك التطبيق']]],
 ];
@@ -93,8 +95,8 @@ export function openHome() {
       const drawHadith = () => {
         const day = Math.floor(Date.now() / 864e5);
         const hd = list[(day * 7919 + off) % list.length];
-        $('[data-hadith]', body).innerHTML = `<b style="color:var(--gharib)">حديث اليوم</b><div style="font-size:17px;line-height:1.75;margin:6px 0;text-align:justify">${esc(hd.t)}</div>
-          <div class="muted">${esc(hd.s)}</div><div class="row"><button class="link" data-more>حديث آخر</button><button class="link" data-sh>مشاركة</button></div>`;
+        $('[data-hadith]', body).innerHTML = `<b style="color:var(--gharib)">حديث اليوم</b>${hadithHtml(hd)}
+          <div class="row"><button class="link" data-more>حديث آخر</button><button class="link" data-sh>مشاركة</button></div>`;
         $('[data-more]', body).onclick = () => { off++; drawHadith(); };
         $('[data-sh]', body).onclick = () => (navigator.share ? navigator.share({ text: `${hd.t}\n— ${hd.s}` }).catch(() => {}) : null);
       };
@@ -106,7 +108,7 @@ export function openHome() {
         ({
           prayer: () => openPrayer(), qibla: openQibla, azkar: () => openAzkar(), tasbih: openTasbih, hijri: openHijri,
           ramadan: openRamadan, names: openNames, zakat: openZakat, radio: () => openRadio(0), nasheed: () => openRadio(1),
-          sheikhs: openSheikhs, poems: openPoems, tajweed: openTajweed, settings: app.openSettings, tafsir: () => app.openTafsir?.(), index: () => app.openIndex(), search: app.openSearch,
+          sheikhs: openSheikhs, poems: openPoems, tajweed: openTajweed, virtues: openVirtues, hadiths: openHadithLibrary, english: openEnglish, settings: app.openSettings, tafsir: () => app.openTafsir?.(), index: () => app.openIndex(), search: app.openSearch,
           marks: () => app.openIndex('marks'), share: app.shareApp,
         })[g.dataset.go]?.();
       };

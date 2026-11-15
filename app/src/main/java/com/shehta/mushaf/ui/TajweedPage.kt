@@ -40,7 +40,8 @@ private class TUnit(val s: Int, val a: Int, val text: String, val spans: IntArra
     var colors: IntArray = IntArray(0)
 }
 
-private class TLine(val top: Float, val bottom: Float, val units: List<TUnit>)
+/** sx < 1: the (rare) line is narrowed around its right edge [right] so the text can be larger. */
+private class TLine(val top: Float, val bottom: Float, val units: List<TUnit>, val sx: Float = 1f, val right: Float = 0f)
 
 private class TLaid(val lines: List<TLine>, val frames: List<Frame>, val fontPx: Float, val markerPx: Float, val lineH: Float, val paint: TextPaint, val ink: Int)
 
@@ -71,7 +72,8 @@ fun TajweedPage(
 
         fun ayahAt(p: Offset): IntArray? {
             val line = laid.lines.firstOrNull { p.y >= it.top && p.y <= it.bottom } ?: return null
-            val u = line.units.minByOrNull { if (p.x < it.left) it.left - p.x else if (p.x > it.left + it.width) p.x - it.left - it.width else 0f } ?: return null
+            val x = if (line.sx < 1f) line.right - (line.right - p.x) / line.sx else p.x
+            val u = line.units.minByOrNull { if (x < it.left) it.left - x else if (x > it.left + it.width) x - it.left - it.width else 0f } ?: return null
             return intArrayOf(u.s, u.a)
         }
 
@@ -85,6 +87,8 @@ fun TajweedPage(
                 val bg = Paint(Paint.ANTI_ALIAS_FLAG)
                 val mk = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = pageFont; textSize = laid.markerPx; color = colors.marker.toArgb() }
                 for (line in laid.lines) {
+                    canvas.save()
+                    if (line.sx < 1f) canvas.scale(line.sx, 1f, line.right, 0f)
                     // ayah background (playing / selected / note colour)
                     for (u in line.units) {
                         val c = when {
@@ -120,6 +124,7 @@ fun TajweedPage(
                             canvas.restore()
                         }
                     }
+                    canvas.restore()
                 }
             }
         }
@@ -191,26 +196,40 @@ private fun layoutTajweed(page: Page, pageFont: Typeface, w: Float, h: Float, re
     // one font size for the page: measured with the real layouts at size 100, the widest line must fit
     val base = 100f
     tp.textSize = base; mkp.textSize = base * MARKER_SCALE
-    val gapEm = 0.18f
-    var widest = 1f
+    val gapEm = 0.12f
+    val needs = ArrayList<Float>()
     for ((_, units) in texts) {
         var sum = 0f
         for (u in units) { build(u); sum += u.width }
-        widest = max(widest, sum + gapEm * base * (units.size - 1))
+        needs += sum + gapEm * base * (units.size - 1)
     }
-    val fontPx = min(base * contentW / widest, lineH * 0.46f)
+    // As large as the page allows: fitted to most lines (80th percentile); the few longer lines are narrowed
+    // slightly (never below 90%) instead of shrinking the whole page.
+    val sorted = needs.sorted()
+    val typical = sorted.getOrElse((sorted.size * 0.8f).toInt().coerceAtMost(sorted.size - 1)) { 1f }.coerceAtLeast(1f)
+    val longest = (sorted.lastOrNull() ?: 1f).coerceAtLeast(1f)
+    val fontPx = minOf(base * contentW / typical, base * contentW / (0.9f * longest), lineH * 0.52f)
     val markerPx = fontPx * MARKER_SCALE
     tp.textSize = fontPx; mkp.textSize = markerPx
 
     val lines = ArrayList<TLine>()
+    val right = left + contentW
     for ((li, units) in texts) {
         for (u in units) build(u)
         val total = units.sumOf { it.width.toDouble() }.toFloat()
         val n = units.size
-        val gap = if (full[li] == true && n > 1) max(0f, (contentW - total) / (n - 1)) else gapEm * fontPx
-        var x = if (full[li] == true && n > 1) left + contentW else left + contentW / 2 + (total + gap * (n - 1)) / 2
-        for (u in units) { x -= u.width; u.left = x; x -= gap }
+        val minGap = gapEm * fontPx
+        val need = total + minGap * (n - 1)
         val top = startY + li * lineH
+        if (need > contentW) {
+            var x = right
+            for (u in units) { x -= u.width; u.left = x; x -= minGap }
+            lines += TLine(top, top + lineH, units, contentW / need, right)
+            continue
+        }
+        val gap = if (full[li] == true && n > 1) max(0f, (contentW - total) / (n - 1)) else minGap * 1.5f
+        var x = if (full[li] == true && n > 1) right else left + contentW / 2 + (total + gap * (n - 1)) / 2
+        for (u in units) { x -= u.width; u.left = x; x -= gap }
         lines += TLine(top, top + lineH, units)
     }
     val frames = ArrayList<Frame>()

@@ -16,6 +16,7 @@ class Sheikh(val name: String, val query: String, val desc: String)
 class Track(val title: String, val url: String)
 class Poem(val name: String, val author: String, val desc: String, val query: String, val tracks: List<Track> = emptyList(), val source: String = "")
 class Group<T>(val title: String, val items: List<T>)
+class Topic(val name: String, val query: String, val desc: String = "")
 
 class TajweedExample(val s: Int, val a: Int, val text: String, val from: Int, val to: Int, val rule: String)
 class LessonSection(val heading: String, val text: String, val examples: List<String>)
@@ -96,10 +97,34 @@ object Learn {
         Poem(o.getString("n"), o.optString("a"), o.optString("d"), o.optString("q", o.getString("n")),
             own.ifEmpty { b?.first ?: emptyList() }, if (own.isNotEmpty()) "" else b?.second ?: "")
     }, { it.getString("n") + " " + it.optString("a") })
-    val podcastTopics: List<String> get() {
-        val a = current().optJSONArray("podcastTopics") ?: JSONArray()
-        return List(a.length()) { a.getString(it) }
+    private fun topicGroups(arr: JSONArray?): List<Group<Topic>> {
+        if (arr == null) return emptyList()
+        return (0 until arr.length()).map { arr.getJSONObject(it) }.map { g ->
+            val items = g.optJSONArray("items") ?: JSONArray()
+            Group(g.optString("title"), (0 until items.length()).map { items.getJSONObject(it) }
+                .map { Topic(it.getString("n"), it.optString("q", it.getString("n")), it.optString("d")) }
+                .filter { !hidden("podcasts", it.name, it.query) })
+        }.filter { it.items.isNotEmpty() }
     }
+
+    /** Podcast topics in sections, plus the sheikhs of the library as their own section. */
+    val podcastGroups: List<Group<Topic>> get() =
+        topicGroups(current().optJSONArray("podcastGroups")) +
+            listOf(Group("المشايخ", sheikhs.flatMap { it.items }.map { Topic(it.name, it.query) })).filter { it.items.isNotEmpty() }
+
+    // ------------------------------------------------------------------ English corner
+    private val en: JSONObject get() = current().optJSONObject("english") ?: bundled.optJSONObject("english") ?: JSONObject()
+    val enSpeakers: List<Sheikh> get() {
+        val a = en.optJSONArray("speakers") ?: return emptyList()
+        return (0 until a.length()).map { a.getJSONObject(it) }.map { Sheikh(it.getString("n"), it.optString("q", it.getString("n")), it.optString("d")) }
+            .filter { !hidden("sheikhs", it.name) }
+    }
+    val enSeries: List<Group<Topic>> get() = topicGroups(en.optJSONArray("series"))
+    val enPodcasts: List<Group<Topic>> get() = topicGroups(en.optJSONArray("podcastGroups"))
+
+    /** English searches: no «بدون موسيقى» suffix, but "no music" for short clips. */
+    fun enLectures(q: String) = yt("$q lecture")
+    fun enShorts(q: String) = yt("$q #shorts no music")
 
     // ------------------------------------------------------------------ YouTube links (search only; nothing re-hosted)
     private const val NO_MUSIC = "بدون موسيقى"

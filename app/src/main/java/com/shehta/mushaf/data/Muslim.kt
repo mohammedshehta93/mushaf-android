@@ -17,7 +17,24 @@ import java.util.TimeZone
 
 class Zikr(val text: String, val virtue: String, val count: Int, val reference: String)
 class ZikrCategory(val title: String, val items: List<Zikr>)
-class DailyHadith(val text: String, val source: String)
+/** A hadith; explanation / lessons / word meanings come from HadeethEnc when available. */
+class DailyHadith(
+    val text: String, val source: String,
+    val explanation: String = "", val hints: List<String> = emptyList(), val words: List<Pair<String, String>> = emptyList(),
+    val title: String = "",
+)
+
+internal fun parseHadith(o: org.json.JSONObject): DailyHadith {
+    val hl = o.optJSONArray("hl") ?: o.optJSONArray("h")
+    val w = o.optJSONArray("w")
+    return DailyHadith(
+        o.getString("t"), o.optString("s") + (if (o.has("g") && !o.optString("s").contains(o.optString("g"))) " — " + o.optString("g") else ""),
+        o.optString("x"),
+        if (hl == null) emptyList() else List(hl.length()) { hl.getString(it) },
+        if (w == null) emptyList() else List(w.length()) { w.getJSONArray(it).let { x -> x.getString(0) to x.getString(1) } },
+        o.optString("title"),
+    )
+}
 class GoodName(val name: String, val refs: List<IntArray>)
 
 /** Hisn al-Muslim, hadith of the day, the 99 names — all offline. */
@@ -48,7 +65,7 @@ object MuslimData {
 
     fun hadiths(): List<DailyHadith> = hadith ?: synchronized(this) {
         hadith ?: JSONArray(Quran.asset("muslim/hadith_daily.json")).let { arr ->
-            List(arr.length()) { i -> arr.getJSONObject(i).let { DailyHadith(it.getString("t"), it.getString("s")) } }
+            List(arr.length()) { i -> parseHadith(arr.getJSONObject(i)) }
         }.also { hadith = it }
     }
 
@@ -58,6 +75,15 @@ object MuslimData {
         val c = Calendar.getInstance()
         val day = c.get(Calendar.YEAR) * 400 + c.get(Calendar.DAY_OF_YEAR)
         return list[((day.toLong() * 7919 + offset) % list.size).toInt()]
+    }
+
+    @Volatile private var explained: List<DailyHadith>? = null
+
+    /** The library of explained hadiths (HadeethEnc); empty when the build could not fetch it. */
+    fun explained(): List<DailyHadith> = explained ?: synchronized(this) {
+        explained ?: try {
+            JSONArray(Quran.asset("muslim/hadith_sharh.json")).let { arr -> List(arr.length()) { parseHadith(arr.getJSONObject(it)) } }
+        } catch (e: Exception) { emptyList() }.also { explained = it }
     }
 
     fun names(): List<GoodName> = names ?: synchronized(this) {

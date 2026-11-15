@@ -7,6 +7,9 @@ plugins {
 // Build number comes from CI (GitHub run number) so every release is newer than the last.
 val buildNumber = (System.getenv("BUILD_NUMBER") ?: "1").toInt()
 val updateRepo = System.getenv("UPDATE_REPO") ?: "mohammedshehta93/mushaf-android"
+// Problems & suggestions are sent to the owner's Telegram bot (GitHub secrets; empty = the screen explains it is off)
+val telegramToken = System.getenv("TELEGRAM_BOT_TOKEN") ?: ""
+val telegramChat = System.getenv("TELEGRAM_CHAT_ID") ?: ""
 
 android {
     namespace = "com.shehta.mushaf"
@@ -19,6 +22,8 @@ android {
         versionCode = 100 + buildNumber
         versionName = "1.0.$buildNumber"
         buildConfigField("String", "UPDATE_REPO", "\"$updateRepo\"")
+        buildConfigField("String", "TELEGRAM_TOKEN", "\"$telegramToken\"")
+        buildConfigField("String", "TELEGRAM_CHAT", "\"$telegramChat\"")
     }
 
     signingConfigs {

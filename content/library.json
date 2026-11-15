@@ -265,16 +265,295 @@
       ]
     }
   ],
-  "podcastTopics": [
-    "القرآن الكريم",
-    "تفسير القرآن",
-    "السيرة النبوية",
-    "قصص الأنبياء",
-    "الشعراوي",
-    "تدبر",
-    "الفقه",
-    "الحديث النبوي",
-    "مصطفى حسني",
-    "عمر عبد الكافي"
-  ]
+  "podcastGroups": [
+    {
+      "title": "القرآن والتفسير",
+      "items": [
+        {
+          "n": "تفسير القرآن الكريم",
+          "q": "تفسير القرآن"
+        },
+        {
+          "n": "تدبر القرآن",
+          "q": "تدبر القرآن"
+        },
+        {
+          "n": "خواطر الشعراوي",
+          "q": "الشعراوي"
+        },
+        {
+          "n": "تفسير السعدي",
+          "q": "تفسير السعدي"
+        },
+        {
+          "n": "تفسير ابن كثير",
+          "q": "تفسير ابن كثير"
+        },
+        {
+          "n": "تلاوات وختمات",
+          "q": "القرآن الكريم كاملا"
+        }
+      ]
+    },
+    {
+      "title": "السيرة والتاريخ",
+      "items": [
+        {
+          "n": "السيرة النبوية",
+          "q": "السيرة النبوية"
+        },
+        {
+          "n": "قصص الأنبياء",
+          "q": "قصص الأنبياء"
+        },
+        {
+          "n": "قصص الصحابة",
+          "q": "قصص الصحابة"
+        },
+        {
+          "n": "التاريخ الإسلامي",
+          "q": "التاريخ الإسلامي"
+        }
+      ]
+    },
+    {
+      "title": "العقيدة والفقه",
+      "items": [
+        {
+          "n": "العقيدة",
+          "q": "العقيدة الإسلامية"
+        },
+        {
+          "n": "الفقه الميسر",
+          "q": "الفقه الإسلامي"
+        },
+        {
+          "n": "فتاوى",
+          "q": "فتاوى شرعية"
+        },
+        {
+          "n": "أصول الفقه",
+          "q": "أصول الفقه"
+        }
+      ]
+    },
+    {
+      "title": "الحديث وشروحه",
+      "items": [
+        {
+          "n": "شرح الأربعين النووية",
+          "q": "الأربعين النووية"
+        },
+        {
+          "n": "شرح رياض الصالحين",
+          "q": "رياض الصالحين"
+        },
+        {
+          "n": "الحديث النبوي",
+          "q": "الحديث النبوي"
+        }
+      ]
+    },
+    {
+      "title": "الرقائق والتزكية",
+      "items": [
+        {
+          "n": "الرقائق",
+          "q": "الرقائق"
+        },
+        {
+          "n": "تزكية النفس",
+          "q": "تزكية النفس"
+        },
+        {
+          "n": "مواعظ",
+          "q": "مواعظ إسلامية"
+        },
+        {
+          "n": "الدار الآخرة",
+          "q": "اليوم الآخر"
+        }
+      ]
+    },
+    {
+      "title": "الأسرة واللغة",
+      "items": [
+        {
+          "n": "الأسرة والتربية",
+          "q": "تربية الأبناء إسلامية"
+        },
+        {
+          "n": "اللغة العربية",
+          "q": "النحو العربي"
+        }
+      ]
+    }
+  ],
+  "english": {
+    "speakers": [
+      {
+        "n": "Dr. Bilal Philips",
+        "q": "Bilal Philips",
+        "d": "Aqeedah, Fiqh, Islamic studies"
+      },
+      {
+        "n": "Dr. Yasir Qadhi",
+        "q": "Yasir Qadhi",
+        "d": "Seerah series, Aqeedah, Quran"
+      },
+      {
+        "n": "Mufti Menk",
+        "q": "Mufti Menk",
+        "d": "Reminders and short talks"
+      },
+      {
+        "n": "Sh. Omar Suleiman",
+        "q": "Omar Suleiman",
+        "d": "Reminders, Seerah, companions"
+      },
+      {
+        "n": "Nouman Ali Khan",
+        "q": "Nouman Ali Khan",
+        "d": "Quran reflections and Arabic"
+      },
+      {
+        "n": "Abdur-Raheem Green",
+        "q": "Abdur Raheem Green",
+        "d": "Dawah and reminders"
+      },
+      {
+        "n": "Sh. Ali Hammuda",
+        "q": "Ali Hammuda",
+        "d": "Reminders and stories of the righteous"
+      },
+      {
+        "n": "Abu Bakr Zoud",
+        "q": "Abu Bakr Zoud",
+        "d": "Reminders and the Hereafter"
+      },
+      {
+        "n": "Muhammad Tim Humble",
+        "q": "Tim Humble",
+        "d": "Tawheed and Quran"
+      },
+      {
+        "n": "Dr. Hussain Yee",
+        "q": "Hussain Yee",
+        "d": "Dawah and new Muslims"
+      }
+    ],
+    "series": [
+      {
+        "title": "New to Islam",
+        "items": [
+          {
+            "n": "How to pray (step by step)",
+            "q": "how to pray salah step by step"
+          },
+          {
+            "n": "How to make wudu",
+            "q": "how to make wudu step by step"
+          },
+          {
+            "n": "New Muslim guide",
+            "q": "new muslim guide"
+          },
+          {
+            "n": "The pillars of Islam",
+            "q": "five pillars of islam explained"
+          },
+          {
+            "n": "The pillars of Iman",
+            "q": "six pillars of iman explained"
+          }
+        ]
+      },
+      {
+        "title": "Learn the Quran",
+        "items": [
+          {
+            "n": "Learn to read Arabic (Qaida)",
+            "q": "noorani qaida english"
+          },
+          {
+            "n": "Tajweed for beginners",
+            "q": "tajweed for beginners english"
+          },
+          {
+            "n": "Tafsir of Juz Amma",
+            "q": "tafsir juz amma english"
+          },
+          {
+            "n": "Meaning of Al-Fatiha",
+            "q": "surah al fatiha tafsir english"
+          }
+        ]
+      },
+      {
+        "title": "Seerah and history",
+        "items": [
+          {
+            "n": "Seerah of the Prophet ﷺ",
+            "q": "seerah of prophet muhammad series"
+          },
+          {
+            "n": "Stories of the Prophets",
+            "q": "stories of the prophets english series"
+          },
+          {
+            "n": "Companions of the Prophet",
+            "q": "companions of the prophet series english"
+          }
+        ]
+      },
+      {
+        "title": "Belief and worship",
+        "items": [
+          {
+            "n": "Names of Allah",
+            "q": "names of allah series english"
+          },
+          {
+            "n": "Explanation of the 40 Hadith",
+            "q": "40 hadith nawawi explanation english"
+          },
+          {
+            "n": "Fiqh of worship",
+            "q": "fiqh of worship english"
+          }
+        ]
+      }
+    ],
+    "podcastGroups": [
+      {
+        "title": "Podcasts",
+        "items": [
+          {
+            "n": "Quran tafsir",
+            "q": "quran tafsir"
+          },
+          {
+            "n": "Seerah",
+            "q": "seerah podcast"
+          },
+          {
+            "n": "Islamic history",
+            "q": "islamic history podcast"
+          },
+          {
+            "n": "New Muslim",
+            "q": "new muslim podcast"
+          },
+          {
+            "n": "Islamic reminders",
+            "q": "islamic reminders"
+          },
+          {
+            "n": "Hadith",
+            "q": "hadith explanation podcast"
+          }
+        ]
+      }
+    ]
+  }
 }

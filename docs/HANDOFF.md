@@ -42,6 +42,17 @@
 - وضع «خط كبير» يستخدم تقسيمًا متوازنًا للسطور (minimum raggedness) مع ضبط كل السطور، فلا يبقى سطر بكلمتين؛ ووضع التجويد يستخدم `LineBreak.Strategy.Balanced`.
 - `PAGE_FONT_STEPS` في `ui/PageView.kt` (وFONT_STEPS في `web/js/app.js`): 1630 / 1530 / 1460، الافتراضي 1460 «أكبر». السطر الأطول من العرض يُضغط أفقيًا (≤١٠٪، في ١١٪ من السطور). لا تغيّر تقسيم السطور.
 
+## المشاكل والمقترحات + الإحصائيات (تيليجرام)
+- `data/Feedback.kt` + `ui/FeedbackScreen.kt`: الرسالة تُرسل لبوت تيليجرام صاحب المشروع. التوكن ورقم المحادثة من أسرار GitHub `TELEGRAM_BOT_TOKEN` و`TELEGRAM_CHAT_ID` (عبر `build.yml` → BuildConfig)، ولا يُكتبان في المستودع أبدًا.
+- `.github/workflows/stats.yml` يرسل يوميًا عدد تنزيلات آخر إصدار والإجمالي إلى نفس المحادثة. (لا يوجد عدّ دقيق للمستخدمين: صاحب المشروع اختار تيليجرام بدل Firebase.)
+
+## النوايا، وقفات التدبر، فضل القرآن، الأحاديث المشروحة، English corner
+- `tools/content/reading.json` → `assets/quran/reading.json` (`extras_prep.build_reading`): الآيات من النص الرسمي بمرجعها، والأحاديث **بنصها من رياض الصالحين بمعرّفها** (لا يُكتب نص حديث يدويًا). النوايا صياغة التطبيق بلا نسبة.
+- النوايا تظهر أول مرة يُفتح التطبيق (واختياريًا يوميًا)، ووقفة تدبر كل N صفحة (الإعدادات).
+- الشرح من HadeethEnc API وقت البناء (`tools/hadith_sharh.py`)، صحيح/حسن فقط؛ إن تعذّر الاتصال يعمل التطبيق بدون شرح. يُطابق تلقائيًا مع أحاديث فضل القرآن وحديث اليوم.
+- English corner (`ui/EnglishScreen.kt`): ترجمة Saheeh International (fawazahmed0/quran-api)، أحاديث مشروحة بالإنجليزية (أو الأربعون النووية)، محاضرون، سلاسل تعليم، بودكاست. القوائم في `content/library.json` → `english`.
+- البودكاست أقسام في `content/library.json` → `podcastGroups` (+ قسم المشايخ تلقائيًا). حُذف مصطفى حسني بطلب صاحب المشروع.
+
 ## نسخة الويب (للآيفون وأي متصفح)
 - المجلد `web/` (HTML/CSS/JS بدون أي مكتبات أو خطوة بناء)، وتُنشر على GitHub Pages عبر `.github/workflows/web.yml`
   باستخدام `tools/build_web.py` (نفس بيانات الأندرويد + خطوط WOFF2). الرابط: https://mohammedshehta93.github.io/mushaf-android/

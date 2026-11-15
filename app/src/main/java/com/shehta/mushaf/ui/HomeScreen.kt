@@ -35,6 +35,9 @@ import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.Feedback
+import androidx.compose.material.icons.filled.FormatQuote
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.automirrored.filled.LibraryBooks
@@ -147,8 +150,7 @@ fun HomeScreen(mp: MuslimPrefs, c: MushafColors, onBack: () -> Unit, onPick: (St
                 val h = MuslimData.hadithOfDay(hadithOffset)
                 Card2(c) {
                     Text("حديث اليوم", fontWeight = FontWeight.Bold, color = c.gharib)
-                    Text(h.text, fontSize = 17.sp, lineHeight = 29.sp, textAlign = TextAlign.Justify, modifier = Modifier.padding(vertical = 6.dp))
-                    Text(h.source, fontSize = 12.sp, color = c.muted)
+                    HadithBody(c, h)
                     Row {
                         TextButton(onClick = { hadithOffset++ }) { Text("حديث آخر") }
                         TextButton(onClick = {
@@ -160,6 +162,7 @@ fun HomeScreen(mp: MuslimPrefs, c: MushafColors, onBack: () -> Unit, onPick: (St
             // ---- every tool, grouped so nothing gets lost
             val sections: List<Pair<String, List<Triple<String, ImageVector, String>>>> = listOf(
                 "القرآن الكريم" to listOf(
+                    Triple("virtues", Icons.Filled.Favorite, "فضل القرآن"),
                     Triple("search", Icons.Filled.Search, "البحث في القرآن"),
                     Triple("tafsir", Icons.Filled.AutoStories, "التفسير"),
                     Triple("tajweed", Icons.Filled.RecordVoiceOver, "تعلّم التجويد"),
@@ -181,6 +184,7 @@ fun HomeScreen(mp: MuslimPrefs, c: MushafColors, onBack: () -> Unit, onPick: (St
                 "طلب العلم" to listOf(
                     Triple("sheikhs", Icons.Filled.School, "الشيوخ والدروس"),
                     Triple("poems", Icons.AutoMirrored.Filled.LibraryBooks, "المتون والمنظومات"),
+                    Triple("hadiths", Icons.Filled.FormatQuote, "أحاديث مشروحة"),
                     Triple("fiqh", Icons.Filled.Gavel, "تعلّم الفقه"),
                     Triple("names", Icons.Filled.Star, "أسماء الله الحسنى"),
                 ),
@@ -189,7 +193,11 @@ fun HomeScreen(mp: MuslimPrefs, c: MushafColors, onBack: () -> Unit, onPick: (St
                     Triple("podcast", Icons.Filled.Podcasts, "بودكاست"),
                     Triple("nasheed", Icons.Filled.Headphones, "قصائد ومتون صوتية"),
                 ),
+                "English" to listOf(
+                    Triple("english", Icons.Filled.Language, "English corner\nللمسلمين الأجانب"),
+                ),
                 "التطبيق" to listOf(
+                    Triple("feedback", Icons.Filled.Feedback, "المشاكل والمقترحات"),
                     Triple("settings", Icons.Filled.Settings, "الإعدادات"),
                     Triple("share", Icons.Filled.Share, "شارك التطبيق"),
                 ),

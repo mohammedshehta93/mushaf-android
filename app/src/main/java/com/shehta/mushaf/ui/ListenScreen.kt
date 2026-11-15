@@ -124,7 +124,8 @@ private fun RadiosTab(c: MushafColors) {
 }
 
 @Composable
-private fun PodcastsTab(c: MushafColors, lp: ListenPrefs, initial: String?, onOpen: (Podcast) -> Unit) {
+internal fun PodcastsTab(c: MushafColors, lp: ListenPrefs, initial: String?, onOpen: (Podcast) -> Unit,
+                         groups: List<com.shehta.mushaf.data.Group<com.shehta.mushaf.data.Topic>>? = null, english: Boolean = false) {
     val scope = rememberCoroutineScope()
     var query by rememberSaveable { mutableStateOf("") }
     var results by remember { mutableStateOf<List<Podcast>?>(null) }
@@ -145,19 +146,31 @@ private fun PodcastsTab(c: MushafColors, lp: ListenPrefs, initial: String?, onOp
     LazyColumn(Modifier.fillMaxWidth(), contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), singleLine = true,
-                placeholder = { Text("ابحث عن بودكاست ديني") }, leadingIcon = { Icon(Icons.Filled.Search, null) },
+                placeholder = { Text(if (english) "Search podcasts" else "ابحث عن بودكاست ديني") }, leadingIcon = { Icon(Icons.Filled.Search, null) },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = { search(query) }))
-            Row(Modifier.horizontalScroll(rememberScrollState()).padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Listen.SUGGESTED.forEach { s -> AssistChip(onClick = { search(s) }, label = { Text(s) }) }
-            }
+            if (results != null) TextButton(onClick = { results = null; query = "" }) { Text(if (english) "‹ All topics" else "‹ كل الأقسام") }
         }
         if (results == null && lp.subscriptions.isNotEmpty()) {
             item { Text("اشتراكاتي", fontWeight = FontWeight.Bold, color = c.gharib) }
             items(lp.subscriptions, key = { "sub" + it.feed }) { p -> PodcastRow(c, lp, p, onOpen) }
         }
         if (results == null && lp.subscriptions.isEmpty()) item {
-            Text("اختر موضوعًا من الأعلى أو اكتب اسم شيخ أو برنامج، ثم اضغط ♡ للاشتراك ليظهر هنا دائمًا. " +
-                "البرامج من دليل البودكاست العام وتُشغَّل من مصدرها مباشرة؛ راجع المحتوى ومصدره بنفسك.", color = c.muted, fontSize = 14.sp)
+            Text(if (english) "Pick a topic, then tap ♡ to keep a show here." else "اختر قسمًا ثم موضوعًا أو شيخًا، واضغط ♡ على البرنامج ليظهر هنا دائمًا. " +
+                "البرامج من دليل البودكاست العام وتُشغَّل من مصدرها مباشرة.", color = c.muted, fontSize = 13.sp)
+        }
+        if (results == null && !loading) {
+            (groups ?: Listen.GROUPS).forEach { g ->
+                item { Text(g.title, fontWeight = FontWeight.Bold, color = c.gharib, fontSize = 16.sp, modifier = Modifier.padding(top = 8.dp)) }
+                items(g.items, key = { "t" + g.title + it.name }) { t ->
+                    Card2(c, Modifier.clickable { search(t.query) }) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Filled.Podcasts, null, tint = c.marker)
+                            Text(t.name, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f).padding(start = 10.dp))
+                            Text("›", color = c.muted)
+                        }
+                    }
+                }
+            }
         }
         if (loading) item { Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() } }
         error?.let { e -> item { Text(e, color = c.mistake) } }
@@ -185,7 +198,7 @@ private fun PodcastRow(c: MushafColors, lp: ListenPrefs, p: Podcast, onOpen: (Po
 }
 
 @Composable
-private fun EpisodesList(c: MushafColors, lp: ListenPrefs, p: Podcast) {
+internal fun EpisodesList(c: MushafColors, lp: ListenPrefs, p: Podcast) {
     var eps by remember(p.feed) { mutableStateOf<List<Episode>?>(null) }
     var error by remember(p.feed) { mutableStateOf(false) }
     LaunchedEffect(p.feed) {

@@ -445,3 +445,79 @@ def resolve_poem_audio(lib):
                 print("WARNING: audio search failed for", it["n"], ex); r = None
             if r: it.update(r); found += 1
     print("poem audio found:", found)
+
+
+# ------------------------------------------------------------------ reading: intentions, tadabbur reminders, virtues of the Quran
+def build_reading(D, OUT, sharh_items=None):
+    """Every ayah comes from the official text, every hadith verbatim from Riyad as-Salihin by its id."""
+    import hadith_sharh
+    cfg = json.load(open(f"{HERE}/content/reading.json", encoding="utf-8"))
+    text = json.load(open(f"{OUT}/text.json", encoding="utf-8"))
+    rs = json.load(open(fetch(RIYAD, f"{D}/riyad.json"), encoding="utf-8"))
+    by_id = {h["id"]: h for h in rs["hadiths"]}
+    names = json.load(open(f"{OUT}/meta.json", encoding="utf-8"))["surahs"]
+    idx = hadith_sharh.Index(sharh_items or [])
+    english = rs["hadiths"][0].get("english") is not None
+
+    def resolve(ref):
+        if "ayah" in ref:
+            s, a = map(int, ref["ayah"].split(":"))
+            t = text.get(ref["ayah"])
+            if not t: raise SystemExit(f"ERROR: reading.json: ayah {ref['ayah']} not found")
+            return {"k": "a", "s": s, "a": a, "t": t, "src": f"سورة {names[s - 1]['name']} — الآية {a}"}
+        h = by_id.get(ref["riyad"])
+        if not h: raise SystemExit(f"ERROR: reading.json: Riyad hadith {ref['riyad']} not found")
+        t = re.sub(r"[ \t]+", " ", h["arabic"].replace(RLM, "")).strip().lstrip("-").strip()
+        out = {"k": "h", "t": t, "src": f"رياض الصالحين ({h['idInBook']})"}
+        sh = idx.find(t)
+        if sh: out.update({"x": sh["x"], "hl": sh["h"], "w": sh["w"], "g": sh["g"]})
+        if english and isinstance(h.get("english"), dict):
+            out["en"] = (h["english"].get("narrator", "") + " " + h["english"].get("text", "")).strip()
+        return out
+
+    res = {
+        "intentions": [dict(resolve(x["ref"]), n=x["t"]) for x in cfg["intentions"]],
+        "reminders": [dict(resolve(x["ref"]), h=x["h"]) for x in cfg["reminders"]],
+        "virtues": [{"title": g["title"], "items": [resolve(r) for r in g["items"]]} for g in cfg["virtues"]],
+    }
+    json.dump(res, open(f"{OUT}/reading.json", "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
+    n_x = sum(1 for g in res["virtues"] for i in g["items"] if i.get("x"))
+    print("reading: intentions", len(res["intentions"]), "· reminders", len(res["reminders"]), "· virtues with explanation", n_x)
+
+
+ENGLISH_QURAN = "https://raw.githubusercontent.com/fawazahmed0/quran-api/1/editions/eng-ummmuhammad.min.json"
+
+
+def build_english(D, OUT):
+    """Saheeh International translation (by Umm Muhammad) for the English corner."""
+    os.makedirs(f"{OUT}/english", exist_ok=True)
+    d = json.load(open(fetch(ENGLISH_QURAN, f"{D}/eng-saheeh.json"), encoding="utf-8"))
+    tr = {f"{v['chapter']}:{v['verse']}": v["text"].strip() for v in d["quran"]}
+    if len(tr) != 6236: raise SystemExit(f"ERROR: English translation has {len(tr)} ayahs")
+    json.dump(tr, open(f"{OUT}/english/saheeh.json", "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
+    # The Forty Hadith of an-Nawawi in English (fallback when the explained English hadiths are unavailable)
+    nw = json.load(open(fetch(NAWAWI, f"{D}/nawawi40.json"), encoding="utf-8"))
+    out = []
+    for h in nw["hadiths"]:
+        e = h.get("english") or {}
+        t = (e.get("narrator", "") + " " + e.get("text", "")).strip() if isinstance(e, dict) else str(e)
+        if t: out.append({"t": t, "s": f"40 Hadith of an-Nawawi, no. {h['idInBook']}", "ar": h["arabic"].replace(RLM, "").strip()})
+    json.dump(out, open(f"{OUT}/english/nawawi40.json", "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
+
+
+def attach_daily_sharh(OUT, sharh_items):
+    """Hadith of the day = the explained hadiths (sahih/hasan) when available; otherwise keep the old list,
+    attaching an explanation wherever the same hadith is found."""
+    import hadith_sharh
+    path = f"{OUT}/muslim/hadith_daily.json"
+    if len(sharh_items) >= 300:
+        daily = [{"t": h["t"], "s": h["s"] + (f" — {h['g']}" if h["g"] else ""), "x": h["x"], "hl": h["h"], "w": h["w"]}
+                 for h in sharh_items if len(h["t"]) <= 700]
+    else:
+        daily = json.load(open(path, encoding="utf-8"))
+        idx = hadith_sharh.Index(sharh_items)
+        for d in daily:
+            sh = idx.find(d["t"])
+            if sh: d.update({"x": sh["x"], "hl": sh["h"], "w": sh["w"]})
+    json.dump(daily, open(path, "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
+    print("hadith of the day:", len(daily), "· with explanation:", sum(1 for d in daily if d.get("x")))

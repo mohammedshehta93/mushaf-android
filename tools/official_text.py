@@ -128,5 +128,9 @@ def apply(D, OUT, pages, surahs, words_text):
 
     json.dump(official, open(f"{OUT}/text.json", "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
     json.dump(tj, open(f"{OUT}/tajweed.json", "w"), separators=(",", ":"))
-    import extras_prep
+    import extras_prep, hadith_sharh
     extras_prep.build_learning(OUT)          # tajweed lesson examples, now from the official text
+    sharh = hadith_sharh.build(D, OUT)       # explanations (network; never fails)
+    extras_prep.attach_daily_sharh(OUT, sharh)
+    extras_prep.build_reading(D, OUT, sharh) # intentions, tadabbur reminders, virtues — from the official text
+    extras_prep.build_english(D, OUT)

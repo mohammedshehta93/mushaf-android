@@ -28,7 +28,7 @@ object Listen {
     } catch (e: Exception) { emptyList() }
 
     /** Search terms offered as chips; results come from the public podcast directory. */
-    val SUGGESTED: List<String> get() = Learn.podcastTopics
+    val GROUPS: List<Group<Topic>> get() = Learn.podcastGroups
 
     private fun get(url: String): String {
         val c = URL(url).openConnection() as HttpURLConnection

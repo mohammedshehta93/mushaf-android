@@ -151,6 +151,11 @@ sealed class Overlay {
     object Sheikhs : Overlay()
     object Poems : Overlay()
     object TajweedCourse : Overlay()
+    object Feedback : Overlay()
+    object Intentions : Overlay()
+    object Virtues : Overlay()
+    object HadithLibrary : Overlay()
+    object English : Overlay()
     class Prayer(val tab: Int = 0) : Overlay()
     class Azkar(val start: String? = null) : Overlay()
     class Tafsir(val s: Int, val a: Int) : Overlay()
@@ -171,6 +176,10 @@ fun App(prefs: Prefs, mp: MuslimPrefs) {
 
     var overlay by remember { mutableStateOf<Overlay>(Overlay.None) }
     val listenPrefs = remember { com.shehta.mushaf.data.ListenPrefs(context) }
+    val readingPrefs = remember { ReadingPrefs(context) }
+    var reminder by remember { mutableStateOf<com.shehta.mushaf.data.RItem?>(null) }
+    var pagesTurned by remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) { if (readingPrefs.shouldShowIntentions()) overlay = Overlay.Intentions }
     var barsVisible by remember { mutableStateOf(false) }
     var selection by remember { mutableStateOf<Selection?>(null) }
     var meaning by remember { mutableStateOf<Gharib?>(null) }
@@ -192,6 +201,16 @@ fun App(prefs: Prefs, mp: MuslimPrefs) {
     fun pageOfIndex(i: Int) = if (spread) i * 2 + 1 else i + 1
     fun indexOfPage(p: Int) = if (spread) (p - 1) / 2 else p - 1
     val current = pageOfIndex(pager.currentPage).coerceIn(1, Quran.PAGES)
+    // a short tadabbur reminder every few pages turned
+    LaunchedEffect(current) {
+        pagesTurned++
+        val every = readingPrefs.tadabburEvery
+        val list = com.shehta.mushaf.data.Reading.reminders
+        if (every > 0 && pagesTurned > 1 && (pagesTurned - 1) % every == 0 && list.isNotEmpty() && reminder == null) {
+            val i = readingPrefs.reminderIndex
+            reminder = list[i % list.size]; readingPrefs.reminderIndex = i + 1
+        }
+    }
 
     fun goTo(page: Int, sel: Selection? = null) {
         scope.launch { pager.scrollToPage(indexOfPage(page.coerceIn(1, Quran.PAGES))) }
@@ -386,6 +405,9 @@ fun App(prefs: Prefs, mp: MuslimPrefs) {
 
         // ------------------------------------------------------------------ bottom area: player, hifz bar, menu bar
         Column(Modifier.align(Alignment.BottomCenter)) {
+            AnimatedVisibility(visible = reminder != null && overlay == Overlay.None && !hifzOn) {
+                reminder?.let { r -> TadabburCard(colors, r, onDismiss = { reminder = null }) }
+            }
             AnimatedVisibility(visible = audio.active && overlay == Overlay.None && !hifzOn) {
                 MiniPlayer(colors, onOpen = { if (audio.stream) overlay = Overlay.Listen() else playerFor = intArrayOf(audio.s, audio.a) },
                     modifier = if (barsVisible) Modifier else Modifier.navigationBarsPadding())
@@ -509,6 +531,11 @@ fun App(prefs: Prefs, mp: MuslimPrefs) {
                         "sheikhs" -> overlay = Overlay.Sheikhs
                         "poems" -> overlay = Overlay.Poems
                         "tajweed" -> overlay = Overlay.TajweedCourse
+                        "feedback" -> overlay = Overlay.Feedback
+                        "virtues" -> overlay = Overlay.Virtues
+                        "intentions" -> overlay = Overlay.Intentions
+                        "hadiths" -> overlay = Overlay.HadithLibrary
+                        "english" -> overlay = Overlay.English
                         "kahf" -> goTo(PrayerAlarms.KAHF_PAGE)
                         "search" -> overlay = Overlay.Search
                         "marks" -> { IndexTabs.request = 3; overlay = Overlay.Index }
@@ -532,6 +559,13 @@ fun App(prefs: Prefs, mp: MuslimPrefs) {
             Overlay.Names -> NamesScreen(colors, onBack = { overlay = Overlay.Home }, onGo = { s, a -> goTo(Quran.pageOf(s, a), Selection(s, a)) })
             is Overlay.Listen -> androidx.compose.runtime.key(o.tab, o.query) { ListenScreen(colors, listenPrefs, onBack = { overlay = o.back }, startTab = o.tab, podcastQuery = o.query) }
             Overlay.Sheikhs -> SheikhsScreen(colors, onBack = { overlay = Overlay.Home }, onPodcast = { q -> overlay = Overlay.Listen(1, q, Overlay.Sheikhs) })
+            Overlay.Feedback -> FeedbackScreen(colors, current, onBack = { overlay = Overlay.Home })
+            Overlay.Intentions -> IntentionsScreen(colors, readingPrefs, onDone = { overlay = Overlay.None })
+            Overlay.Virtues -> VirtuesScreen(colors, onBack = { overlay = Overlay.Home }, onGo = { s, a -> goTo(Quran.pageOf(s, a), Selection(s, a)) },
+                onIntentions = { overlay = Overlay.Intentions })
+            Overlay.HadithLibrary -> HadithLibraryScreen(colors, onBack = { overlay = Overlay.Home })
+            Overlay.English -> EnglishScreen(colors, listenPrefs, onBack = { overlay = Overlay.Home },
+                onGo = { s, a -> goTo(Quran.pageOf(s, a), Selection(s, a)) })
             Overlay.Poems -> PoemsScreen(colors, listenPrefs, onBack = { overlay = Overlay.Home })
             Overlay.TajweedCourse -> TajweedCourseScreen(colors, onBack = { overlay = Overlay.Home }, onGo = { s, a -> goTo(Quran.pageOf(s, a), Selection(s, a)) })
             Overlay.None -> {}

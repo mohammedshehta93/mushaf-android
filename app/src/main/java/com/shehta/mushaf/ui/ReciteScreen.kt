@@ -96,7 +96,9 @@ private class RecitationListener(
     private var active = false
     private var continuous = false
     private var failures = 0
-    private var mutedVolume = -1
+    private var muted = false
+    private val streams = intArrayOf(android.media.AudioManager.STREAM_MUSIC, android.media.AudioManager.STREAM_NOTIFICATION,
+        android.media.AudioManager.STREAM_SYSTEM)
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
     private val audio = context.getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager
     /** set when the on-device Arabic model is missing (the screen offers to download it) */
@@ -190,22 +192,21 @@ private class RecitationListener(
         handler.postDelayed({ if (active) try { sr?.startListening(intent(continuous)) } catch (e: Exception) { recreate() } }, delayMs)
     }
 
-    /** Mutes the media stream (the recogniser's start chime) while listening with the classic recogniser. */
+    /**
+     * Mutes the recogniser's start/stop chime while listening with the classic recogniser. Phones play it on
+     * different streams (media, notification or system sounds), so all three are muted and restored afterwards.
+     */
     fun mute(on: Boolean) {
-        try {
-            if (on && mutedVolume < 0) {
-                mutedVolume = audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
-                audio.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, android.media.AudioManager.ADJUST_MUTE, 0)
-            } else if (!on && mutedVolume >= 0) {
-                audio.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC, android.media.AudioManager.ADJUST_UNMUTE, 0)
-                mutedVolume = -1
-            }
-        } catch (e: Exception) { }
+        if (on == muted) return
+        muted = on
+        for (st in streams) try {
+            audio.adjustStreamVolume(st, if (on) android.media.AudioManager.ADJUST_MUTE else android.media.AudioManager.ADJUST_UNMUTE, 0)
+        } catch (e: Exception) { }   // e.g. «Do not disturb» forbids changing the notification stream
     }
 
     /** Plays a word's sound: briefly unmutes. */
     fun withSound(block: () -> Unit) {
-        val wasMuted = mutedVolume >= 0
+        val wasMuted = muted
         if (wasMuted) mute(false)
         block()
         if (wasMuted && active) handler.postDelayed({ if (active && !continuous) mute(true) }, 2500)
@@ -451,7 +452,7 @@ private fun ReciteSession(c: MushafColors, prefs: Prefs, plan: ReviewPlan, range
     var hint by remember { mutableStateOf("") }
     var finished by remember { mutableStateOf(false) }
     val said = remember { HashMap<Int, String>() }
-    var consumed by remember { mutableIntStateOf(0) }
+    var activity by remember { mutableIntStateOf(0) }        // bumps whenever the recogniser hears something new
     val vib = remember { context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator }
 
     fun buzz() {
@@ -464,20 +465,13 @@ private fun ReciteSession(c: MushafColors, prefs: Prefs, plan: ReviewPlan, range
     val listener = remember {
         RecitationListener(context,
             onWords = { tokens, final ->
-                if (!finished) {
-                    // words of a partial result can still change, except all but the last one
-                    val stable = if (final) tokens.size else (tokens.size - 1).coerceAtLeast(0)
-                    if (stable > consumed) {
-                        val ev = matcher.feed(tokens.subList(consumed, stable))
-                        for (e in ev) {
-                            if (e.state == WordState.WRONG) { said[e.index] = e.said; buzz() }
-                            if (e.state == WordState.SKIPPED) buzz()
-                        }
-                        if (ev.isNotEmpty()) { tick++; hint = "" }
-                        consumed = stable
-                    }
-                    if (final) consumed = 0
-                    heard = tokens.joinToString(" ")
+                if (!finished && (tokens.isNotEmpty() || final)) {
+                    val before = matcher.pos
+                    val bad = matcher.onResult(tokens, final)
+                    if (bad.isNotEmpty()) { said.putAll(matcher.said); buzz() }
+                    if (tokens.isNotEmpty()) { heard = tokens.joinToString(" "); activity++ }
+                    if (matcher.pos != before || bad.isNotEmpty()) hint = ""
+                    tick++
                     if (matcher.done) finished = true
                 }
             },
@@ -487,6 +481,7 @@ private fun ReciteSession(c: MushafColors, prefs: Prefs, plan: ReviewPlan, range
     LaunchedEffect(finished) {
         if (finished) {
             listener.stop()
+            matcher.finish(); said.putAll(matcher.said); tick++
             // save: mistakes to the review list, and each page's score to the review plan
             for (i in matcher.mistakes) words[i].let { prefs.addMistake(it.s, it.a, it.w) }
             val byPage = HashMap<Int, IntArray>()           // page -> [tested, wrong]
@@ -499,15 +494,16 @@ private fun ReciteSession(c: MushafColors, prefs: Prefs, plan: ReviewPlan, range
             for ((p, x) in byPage) if (x[0] >= 5) plan.record(p, (x[0] - x[1]) * 100 / x[0])
         }
     }
-    // the reciter is stuck: first letters, then the word (and its sound)
-    LaunchedEffect(matcher.pos, listening, finished) {
-        if (!listening || finished || mode == MODE_FREE) return@LaunchedEffect
-        delay(4500)
+    // the reciter is stuck: first letters, then the word (and its sound). Only once he has started reciting
+    // (never before the isti'adha/basmala), and only after a real silence: any new sound restarts the wait.
+    LaunchedEffect(activity, matcher.pos, listening, finished) {
+        if (!listening || finished || mode == MODE_FREE || activity == 0) return@LaunchedEffect
+        delay(6000)
         if (matcher.done) return@LaunchedEffect
         val w = words[matcher.pos]
         val plain = ReciteText.norm(w.text)
         hint = "تلميح: «${plain.take(2)}…»"
-        delay(4000)
+        delay(5000)
         if (matcher.done) return@LaunchedEffect
         matcher.giveCurrent(); tick++
         hint = "الكلمة: ${w.text}"
@@ -517,9 +513,9 @@ private fun ReciteSession(c: MushafColors, prefs: Prefs, plan: ReviewPlan, range
 
     val listState = rememberLazyListState()
     val ayahs = remember(words) { words.indices.groupBy { words[it].s * 1000 + words[it].a }.values.toList() }
-    LaunchedEffect(tick) {
-        val idx = ayahs.indexOfFirst { matcher.pos in it }
-        if (idx >= 0) listState.animateScrollToItem(idx.coerceAtLeast(0))
+    val currentAyah = remember(tick) { ayahs.indexOfFirst { matcher.pos in it } }
+    LaunchedEffect(currentAyah) {          // follow the reciter ayah by ayah (not on every recogniser result)
+        if (currentAyah >= 0) listState.animateScrollToItem(currentAyah)
     }
 
     ScreenScaffold(range.label, c, { listener.stop(); onBack() },

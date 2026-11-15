@@ -17,7 +17,10 @@ object ReciteText {
             val next = word.getOrNull(i + 1)
             when {
                 ch == 'و' && next == 'ٰ' -> { sb.append('ا'); i += 2; continue }
-                (ch == 'ى' || ch == 'ي') && next == 'ٰ' -> { sb.append('ى'); i += 2; continue }
+                (ch == 'ى' || ch == 'ي') && next == 'ٰ' -> {        // «علىٰ» → على, but «أدرىٰك» → أدراك
+                    val more = word.substring(i + 2).any { it in 'ء'..'ي' }
+                    sb.append(if (more) 'ا' else 'ى'); i += 2; continue
+                }
                 ch == 'ٰ' -> sb.append('ا')
                 ch == 'ۧ' -> sb.append('ي')            // small high yeh (إبراهـۧم)
                 else -> sb.append(ch)
@@ -57,70 +60,168 @@ class ExpectedWord(val s: Int, val a: Int, val w: Int, val text: String, val key
 /** What happened to a word: 0 hidden, 1 correct, 2 said wrongly (shown), 3 skipped (shown), 4 the starting words of a test, 5 prompted (the reciter was stuck). */
 object WordState { const val HIDDEN = 0; const val OK = 1; const val WRONG = 2; const val SKIPPED = 3; const val GIVEN = 4; const val PROMPTED = 5 }
 
-class ReciteEvent(val index: Int, val state: Int, val said: String = "")
-
 /**
- * Follows the recitation word by word. [threshold]: how close a spoken word must be to count as correct
- * (lenient 0.55 · normal 0.7 · strict 0.85).
+ * Follows the recitation. Instead of consuming recognised words one by one (fragile: the recogniser revises its
+ * partial results, repeats words between segments, and mishears), it re-aligns the WHOLE transcript heard since the
+ * last checkpoint with the expected words every time anything new is heard (a small edit-distance alignment).
+ *  - a word turns green as soon as it is said;
+ *  - a word is marked wrong / skipped only after the reciter has gone on correctly past it (two words), or at the end
+ *    — never while the reciter may still be saying it, and one misheard word never drags the following ones with it;
+ *  - the isti'adha / basmala before a surah, repetitions and the letters of «الٓمٓ» cost nothing.
+ * [threshold]: how close a spoken word must be to count as correct (lenient 0.55 · normal 0.7 · strict 0.85).
  */
-class ReciteMatcher(val words: List<ExpectedWord>, var threshold: Float = 0.7f, start: Int = 0) {
+class ReciteMatcher(val words: List<ExpectedWord>, var threshold: Float = 0.7f, private val start: Int = 0) {
     val state = IntArray(words.size)
+    /** what was heard instead of a wrong word */
+    val said = HashMap<Int, String>()
+    /** the next word to recite */
     var pos = start; private set
     val done get() = pos >= words.size
-    private var heardAnything = false
 
-    init { for (i in 0 until start) state[i] = WordState.GIVEN }
+    private var base = start                                   // first word not frozen yet
+    private val committed = ArrayList<String>()                // final results heard since the checkpoint (normalised)
+    private val committedRaw = ArrayList<String>()
+    private val boundaries = HashSet<Int>()                    // token indices where a new recogniser result began
+    private var partial: List<String> = emptyList()
+    private var partialRaw: List<String> = emptyList()
+    private var skipNext = 0                                   // tokens of the current utterance already used up
+    private val okEver = BooleanArray(words.size)              // correct and followed by more: stays correct
 
-    private fun matches(spoken: String, i: Int): Boolean =
-        i < words.size && ReciteText.similarity(spoken, words[i].key) >= threshold
+    init { for (i in 0 until start) state[i] = WordState.GIVEN; skipAuto() }
 
-    private fun skipAuto(out: MutableList<ReciteEvent>) {
-        while (pos < words.size && words[pos].auto) { state[pos] = WordState.OK; out += ReciteEvent(pos, WordState.OK); pos++ }
+    private fun skipAuto() {
+        while (pos < words.size && words[pos].auto) { state[pos] = WordState.OK; pos++ }
+        if (base < pos && committed.isEmpty() && partial.isEmpty()) base = pos
     }
+
+    private fun clean(raw: List<String>): Pair<List<String>, List<String>> {
+        val n = ArrayList<String>(); val r = ArrayList<String>()
+        for (t in raw) { val k = ReciteText.norm(t); if (k.length >= 2 || k == "و") { n += k; r += t } }
+        return n to r
+    }
+
+    /**
+     * A recogniser result: [final] = this utterance/segment is complete (its words are kept), otherwise it is the
+     * current, still-changing partial result of the utterance. Returns the indices that just became wrong/skipped.
+     */
+    fun onResult(tokens: List<String>, final: Boolean): List<Int> {
+        var (n, r) = clean(tokens)
+        if (skipNext > 0) { val k = minOf(skipNext, n.size); n = n.drop(k); r = r.drop(k) }
+        // the utterance ended without a final text (error / timeout): keep what the last partial result had
+        if (final && tokens.isEmpty()) { n = partial; r = partialRaw }
+        if (final) {
+            skipNext = 0
+            if (n.isNotEmpty()) { boundaries += committed.size; committed += n; committedRaw += r }
+            partial = emptyList(); partialRaw = emptyList()
+        } else { partial = n; partialRaw = r }
+        return align(false)
+    }
+
+    /** Session over: confirm the mistakes that were still waiting. */
+    fun finish(): List<Int> { partial = emptyList(); return align(true) }
 
     /** The user is stuck: show the current word and move on. */
-    fun giveCurrent(): ReciteEvent? {
+    fun giveCurrent(): Int? {
         if (done) return null
-        state[pos] = WordState.PROMPTED
-        return ReciteEvent(pos++, WordState.PROMPTED)
+        val i = pos
+        state[i] = WordState.PROMPTED
+        // everything heard so far is accounted for
+        skipNext += partial.size
+        committed.clear(); committedRaw.clear(); boundaries.clear(); partial = emptyList(); partialRaw = emptyList()
+        base = i + 1; pos = i + 1; skipAuto()
+        for (j in pos until words.size) if (state[j] != WordState.OK || !okEver[j]) state[j] = WordState.HIDDEN
+        return i
     }
 
-    fun feed(spokenRaw: List<String>): List<ReciteEvent> {
-        val out = ArrayList<ReciteEvent>()
-        val spoken = spokenRaw.map { ReciteText.norm(it) }.filter { it.length >= 2 || it == "و" }
-        var k = 0
-        while (k < spoken.size) {
-            skipAuto(out)
-            if (done) break
-            val t = spoken[k]
-            // isti'adha / basmala before starting
-            if (!heardAnything && ReciteText.isPreamble(t) && !matches(t, pos)) { k++; continue }
-            heardAnything = true
-            // 1) this word
-            if (matches(t, pos)) { state[pos] = WordState.OK; out += ReciteEvent(pos, WordState.OK); pos++; k++; continue }
-            // 2) the recogniser split one Mushaf word in two («يا أيها» → «يٰٓأَيُّهَا»)
-            if (k + 1 < spoken.size && matches(t + spoken[k + 1], pos)) {
-                state[pos] = WordState.OK; out += ReciteEvent(pos, WordState.OK); pos++; k += 2; continue
-            }
-            // 3) the recogniser joined two Mushaf words in one
-            if (pos + 1 < words.size && ReciteText.similarity(t, words[pos].key + words[pos + 1].key) >= threshold) {
-                for (j in 0..1) { state[pos] = WordState.OK; out += ReciteEvent(pos, WordState.OK); pos++ }
-                k++; continue
-            }
-            // 4) a repetition of the previous word (people often repeat to get going): ignore
-            if (pos > 0 && ReciteText.similarity(t, words[pos - 1].key) >= threshold) { k++; continue }
-            // 5) words were skipped: the spoken word is one of the next three
-            val ahead = (1..3).firstOrNull { matches(t, pos + it) }
-            if (ahead != null) {
-                for (j in 0 until ahead) { state[pos + j] = WordState.SKIPPED; out += ReciteEvent(pos + j, WordState.SKIPPED) }
-                pos += ahead
-                state[pos] = WordState.OK; out += ReciteEvent(pos, WordState.OK); pos++; k++; continue
-            }
-            // 6) a different word
-            state[pos] = WordState.WRONG; out += ReciteEvent(pos, WordState.WRONG, spokenRaw.getOrElse(k) { t }); pos++; k++
+    private val anyOk get() = okEver.any { it }
+
+    // ---------------------------------------------------------------- alignment
+    private fun align(final: Boolean): List<Int> {
+        val tok = committed + partial
+        val raw = committedRaw + partialRaw
+        val bnd = HashSet(boundaries).apply { if (partial.isNotEmpty()) add(committed.size) }
+        val n = tok.size
+        val m = minOf(words.size - base, n + 15)
+        val before = state.copyOf()
+        if (n == 0 || m <= 0) return emptyList()
+        val E = words.subList(base, base + m)
+        val sim = Array(n) { i -> FloatArray(m) { j -> ReciteText.similarity(tok[i], E[j].key) } }
+        val preambleFree = !anyOk
+        // the recogniser often mishears a letter or two of a correctly recited word: unless strict, a near miss counts
+        val near = if (threshold < 0.8f) threshold - 0.2f else threshold
+        fun ok(s: Float) = s >= near
+        val NEG = -1e9f
+        val D = Array(n + 1) { FloatArray(m + 1) { NEG } }
+        val B = Array(n + 1) { ByteArray(m + 1) }       // 1 match/sub · 2 deletion · 3 insertion · 4 split · 5 join
+        fun del(j: Int) = if (E[j - 1].auto) 0f else -1f
+        fun ins(i: Int, j: Int): Float {
+            val t = tok[i - 1]
+            if ((j < m && E[j].auto) || (j > 0 && E[j - 1].auto)) return 0f                       // letter names of «الٓمٓ»
+            if (ReciteText.isPreamble(t) && ((j == 0 && preambleFree) || (j < m && E[j].a == 1 && E[j].w == 1))) return 0f
+            if (j > 0 && sim[i - 1][j - 1] >= threshold) return -0.3f                               // repeated the last word
+            if (j > 1 && sim[i - 1][j - 2] >= threshold) return -0.4f
+            return -1f
         }
-        skipAuto(out)
-        return out
+        D[0][0] = 0f
+        for (j in 1..m) { D[0][j] = D[0][j - 1] + del(j); B[0][j] = 2 }
+        for (i in 1..n) for (j in 0..m) {
+            var best = NEG; var b: Byte = 0
+            fun take(v: Float, k: Byte) { if (v > best) { best = v; b = k } }
+            if (j > 0) {
+                val s = sim[i - 1][j - 1]
+                take(D[i - 1][j - 1] + if (s >= threshold) 1f + s else if (ok(s)) 0.5f else -1f, 1)
+                take(D[i][j - 1] + del(j), 2)
+            }
+            take(D[i - 1][j] + ins(i, j), 3)
+            if (i > 1 && j > 0 && ReciteText.similarity(tok[i - 2] + tok[i - 1], E[j - 1].key) >= threshold) take(D[i - 2][j - 1] + 2f, 4)
+            if (j > 1 && ReciteText.similarity(tok[i - 1], E[j - 2].key + E[j - 1].key) >= maxOf(threshold, 0.85f)) take(D[i - 1][j - 2] + 3.5f, 5)
+            D[i][j] = best; B[i][j] = b
+        }
+        var bj = 0
+        for (j in 1..m) if (D[n][j] > D[n][bj] || (final && j == bj + 1 && D[n][j] == D[n][bj] && B[n][j].toInt() == 1)) bj = j
+        // trace back: label per expected word (0 untouched, 1 ok, 2 wrong, 3 skipped) and the token matched to it
+        val lab = IntArray(m); val at = IntArray(m) { -1 }; val gapAtPause = BooleanArray(m)
+        var i = n; var j = bj
+        while (i > 0 || j > 0) {
+            when (B[i][j].toInt()) {
+                1 -> { lab[j - 1] = if (ok(sim[i - 1][j - 1])) 1 else 2; at[j - 1] = i - 1; i--; j-- }
+                2 -> { lab[j - 1] = if (E[j - 1].auto) 1 else 3; at[j - 1] = i; gapAtPause[j - 1] = i in bnd; j-- }
+                3 -> i--
+                4 -> { lab[j - 1] = 1; at[j - 1] = i - 1; i -= 2; j-- }
+                5 -> { lab[j - 1] = 1; lab[j - 2] = 1; at[j - 1] = i - 1; at[j - 2] = i - 1; i--; j -= 2 }
+                else -> { i = 0; j = 0 }
+            }
+        }
+        // ONE word missing exactly where the recogniser started a new result is usually the recogniser's loss, not
+        // the reciter's: benefit of the doubt. (A whole forgotten ayah at a pause is still a mistake.)
+        for (k in 0 until m) if (lab[k] == 3 && gapAtPause[k] && lab.getOrNull(k - 1) != 3 && lab.getOrNull(k + 1) != 3) lab[k] = 1
+        var lastOk = -1
+        for (k in 0 until m) if (lab[k] == 1 || okEver[base + k]) lastOk = k
+        for (k in 0 until m) {
+            val g = base + k
+            val okAfter = (k + 1..lastOk).count { lab[it] == 1 }
+            state[g] = when {
+                okEver[g] || lab[k] == 1 -> { if (k < lastOk) okEver[g] = true; WordState.OK }
+                lab[k] == 2 && ((k < lastOk && okAfter >= 2) || (final && k <= lastOk + 1)) -> { said[g] = raw.getOrElse(at[k]) { "" }; WordState.WRONG }
+                k < lastOk && (okAfter >= 2 || final) && lab[k] == 3 -> WordState.SKIPPED
+                else -> WordState.HIDDEN
+            }
+        }
+        pos = base + lastOk + 1
+        skipAuto()
+        // checkpoint: freeze an old part so the alignment stays small and fast
+        if (partial.isEmpty() && committed.size > 24) {
+            var cut = -1
+            for (k in lastOk downTo 0) if (lab[k] == 1 && at[k] in 0..committed.size - 8 && (k + 1..lastOk).count { lab[it] == 1 } >= 2) { cut = k; break }
+            if (cut >= 0) {
+                val drop = at[cut] + 1
+                repeat(drop) { committed.removeAt(0); committedRaw.removeAt(0) }
+                val nb = HashSet<Int>(); for (x in boundaries) if (x - drop >= 0) nb += x - drop
+                boundaries.clear(); boundaries += nb
+                base += cut + 1
+            }
+        }
+        return (0 until words.size).filter { (state[it] == WordState.WRONG || state[it] == WordState.SKIPPED) && before[it] != state[it] }
     }
 
     /** Wrong, skipped and prompted words. */
@@ -128,4 +229,3 @@ class ReciteMatcher(val words: List<ExpectedWord>, var threshold: Float = 0.7f, 
     val tested: Int get() = state.indices.count { !words[it].auto && state[it] != WordState.GIVEN && state[it] != WordState.HIDDEN }
     val accuracy: Int get() = if (tested == 0) 0 else (tested - mistakes.size) * 100 / tested
 }
-

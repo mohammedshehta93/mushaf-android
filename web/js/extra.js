@@ -103,8 +103,8 @@ export async function openVirtues() {
     title: 'فضل القرآن', sub: 'قراءته وحفظه وتعلّمه والعمل به',
     render(body) {
       body.innerHTML = `<button class="card" style="display:block;width:100%;text-align:right" data-int><b style="color:var(--gharib);font-size:17px">نوايا قبل القراءة ›</b><div class="muted">استحضر نواياك قبل أن تبدأ.</div></button>
-        <p class="muted">الآيات من النص الرسمي لمجمع الملك فهد، والأحاديث بنصها من «رياض الصالحين» مع تخريجها.</p>
-        ${r.virtues.map((g) => `<div class="sec-title" style="font-size:17px">${esc(g.title)}</div>${g.items.map((it) => `<div class="card">${itemHtml(it)}</div>`).join('')}`).join('')}`;
+        <p class="muted">الآيات من النص الرسمي لمجمع الملك فهد، والأحاديث بنصها من «رياض الصالحين» والكتب الستة مع رقم الحديث وحكمه.</p>
+        ${r.virtues.map((g) => `<div class="sec-title" style="font-size:17px">${esc(g.title)}</div>${g.note ? `<p class="muted">${esc(g.note)}</p>` : ''}${g.items.map((it) => `<div class="card">${it.h ? `<b style="color:var(--gharib);display:block;margin-bottom:4px">${esc(it.h)}</b>` : ''}${itemHtml(it)}</div>`).join('')}`).join('')}`;
       wireGo(body);
       body.addEventListener('click', (e) => { if (e.target.closest('[data-int]')) openIntentions(false); });
     },

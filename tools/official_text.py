@@ -76,6 +76,30 @@ def word_tokens(text, words):
     return toks
 
 
+def check_marks(OUT, official):
+    """Quarter (rub') starts and sajdas must agree with the marks of the official text itself (۞ and ۩).
+    The quarter list comes from another source (Tanzil via quran-api) and had one slip: the quarter in al-Hijr
+    starts at 15:49 («۞ نَبِّئۡ عِبَادِيٓ»), not 15:50 — corrected here, and any other disagreement stops the build."""
+    meta = json.load(open(f"{OUT}/meta.json", encoding="utf-8"))
+    star = {tuple(map(int, k.split(":"))) for k, v in official.items() if "۞" in v}
+    sajda = sorted(tuple(map(int, k.split(":"))) for k, v in official.items() if "۩" in v)
+    if [(x["s"], x["a"]) for x in meta["sajda"]] != sajda:
+        raise SystemExit(f"ERROR: sajda list differs from the ۩ marks of the official text: {sajda}")
+    fixed = []
+    for r in meta["rub"]:
+        key = (r["s"], r["a"])
+        if key in star or r["a"] == 1: continue
+        near = [(r["s"], r["a"] + d) for d in (-1, 1, -2, 2) if (r["s"], r["a"] + d) in star]
+        if not near: raise SystemExit(f"ERROR: quarter {r['n']} at {key} has no ۞ in the official text")
+        r["a"] = near[0][1]; r["page"] = meta["ap"][r["s"] - 1][r["a"] - 1]; fixed.append(f"{key}->{near[0]}")
+    starts = {(r["s"], r["a"]) for r in meta["rub"]}
+    if star - starts: raise SystemExit(f"ERROR: ۞ in the official text without a quarter: {sorted(star - starts)}")
+    for j in meta["juz"]:
+        if (j["s"], j["a"]) not in starts: raise SystemExit(f"ERROR: juz {j['n']} does not start a quarter")
+    json.dump(meta, open(f"{OUT}/meta.json", "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
+    print("quarters / sajdas checked against the official text; corrected:", fixed)
+
+
 def apply(D, OUT, pages, surahs, words_text):
     v22 = json.load(open(f"{D}/hafs_v22.json", encoding="utf-8"))
     keys = [(s["n"], a) for s in surahs for a in range(1, s["ayahs"] + 1)]
@@ -126,13 +150,21 @@ def apply(D, OUT, pages, surahs, words_text):
         for l in pg["lines"]:
             if "v" in l: l["v"].sort(key=lambda x: x[0])
 
+    check_marks(OUT, official)
     json.dump(official, open(f"{OUT}/text.json", "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
     json.dump(tj, open(f"{OUT}/tajweed.json", "w"), separators=(",", ":"))
     import extras_prep, hadith_sharh
     extras_prep.build_learning(OUT)          # tajweed lesson examples, now from the official text
     sharh = hadith_sharh.build(D, OUT)       # explanations (network; never fails)
-    extras_prep.attach_daily_sharh(OUT, sharh)
+    extras_prep.attach_daily_sharh(OUT, sharh, D)
     extras_prep.build_reading(D, OUT, sharh) # intentions, tadabbur reminders, virtues — from the official text
     extras_prep.build_english(D, OUT)
+    import hadith_books, hadith_check
+    hadith_books.build_db(D, OUT)            # hadith search / authenticity window
+    hadith_check.build(D, OUT)               # famous sayings that are not authentic
+    import azkar_check
+    azkar_check.build(D, OUT)                # adhkar: rulings of the graders, weak additions removed
+    import surah_info
+    surah_info.build(D, OUT)                 # surah aims and revelation reports (six books, sahih/hasan)
     import shutil, os
     shutil.copy(os.path.join(os.path.dirname(os.path.abspath(__file__)), "content", "whatsnew.json"), f"{OUT}/whatsnew.json")

@@ -126,7 +126,7 @@ def parse_hadith(t):
     grade = ""
     for n in nts:
         for g in GRADES:
-            if n.startswith(g):
+            if n.lstrip(". ").startswith(g):     # some notes begin «. صحيح» (audit: 10 grades were missed)
                 grade = g; break
         if grade: break
     close = main.rfind("}")
@@ -465,9 +465,38 @@ def build_reading(D, OUT, sharh_items=None):
             t = text.get(ref["ayah"])
             if not t: raise SystemExit(f"ERROR: reading.json: ayah {ref['ayah']} not found")
             return {"k": "a", "s": s, "a": a, "t": t, "src": f"سورة {names[s - 1]['name']} — الآية {a}"}
+        if "tafsir" in ref:                     # Ibn Kathir (the app's tafsir), verbatim between two anchors, footnotes dropped
+            import hadith_books
+            s, a = map(int, ref["tafsir"].split(":"))
+            rows = json.load(open(f"{OUT}/tafsir/{s}.json", encoding="utf-8"))
+            row = next(x for x in rows if x[0] <= a <= x[1])
+            t = re.sub(r" *\[\[.*?\]\]", "", row[2], flags=re.S)
+            p, ix = hadith_books.norm_with_index(t)
+            f, e = hadith_books.norm_with_index(ref["from"])[0].strip(), hadith_books.norm_with_index(ref["to"])[0].strip()
+            i = p.find(f); j = p.find(e, i)
+            if i < 0 or j < 0 or p.find(f, i + 1) >= 0:
+                raise SystemExit(f"ERROR: reading.json: tafsir excerpt not found exactly once in {ref['tafsir']}: {ref['from']}")
+            end = ix[j + len(e) - 1] + 1
+            while end < len(t) and t[end] not in " \n": end += 1          # the rest of the last word and its punctuation
+            ex = re.sub(r"[ \t]+", " ", t[ix[i]:end]).strip()
+            if ex[-1] in "،؛,": ex = ex[:-1] + " …"                   # the passage goes on in the book
+            ay = f"الآية {a}" if row[0] == row[1] else f"الآيات {row[0]}–{row[1]}"
+            return {"k": "h", "t": ex, "src": f"تفسير ابن كثير — سورة {names[s - 1]['name']}، {ay}"}
+        if "book" in ref:                       # the six books / al-Muwatta, verbatim (an excerpt between two anchors)
+            import hadith_books
+            out = hadith_books.resolve(D, ref)
+            sh = idx.find(out["t"])
+            if sh: out.update({"x": sh["x"], "hl": sh["h"], "w": sh["w"], "g": sh["g"]})
+            return out
         h = by_id.get(ref["riyad"])
         if not h: raise SystemExit(f"ERROR: reading.json: Riyad hadith {ref['riyad']} not found")
         t = re.sub(r"[ \t]+", " ", h["arabic"].replace(RLM, "")).strip().lstrip("-").strip()
+        import hadith_books
+        g = hadith_books.grade_of(D, t)
+        if "same" in ref:          # checked by hand: the same hadith in the six books (must be sahih/hasan there)
+            r = hadith_books.find(D, ref["same"]); g = (ref["same"]["book"], r["n"], r["c"], "")
+        if not ((g and g[2] == 0) or (not g and SAHIHAIN.search(t))):
+            raise SystemExit(f"ERROR: reading.json: Riyad {h['idInBook']} is not confirmed sahih/hasan ({g})")
         out = {"k": "h", "t": t, "src": f"رياض الصالحين ({h['idInBook']})"}
         sh = idx.find(t)
         if sh: out.update({"x": sh["x"], "hl": sh["h"], "w": sh["w"], "g": sh["g"]})
@@ -478,7 +507,8 @@ def build_reading(D, OUT, sharh_items=None):
     res = {
         "intentions": [dict(resolve(x["ref"]), n=x["t"]) for x in cfg["intentions"]],
         "reminders": [dict(resolve(x["ref"]), h=x["h"]) for x in cfg["reminders"]],
-        "virtues": [{"title": g["title"], "items": [resolve(r) for r in g["items"]]} for g in cfg["virtues"]],
+        "virtues": [dict({"title": g["title"], "items": [dict(resolve(r), **({"h": r["h"]} if r.get("h") else {})) for r in g["items"]]},
+                         **({"note": g["note"]} if g.get("note") else {})) for g in cfg["virtues"]],
     }
     json.dump(res, open(f"{OUT}/reading.json", "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
     n_x = sum(1 for g in res["virtues"] for i in g["items"] if i.get("x"))
@@ -502,12 +532,30 @@ def build_english(D, OUT):
         e = h.get("english") or {}
         t = (e.get("narrator", "") + " " + e.get("text", "")).strip() if isinstance(e, dict) else str(e)
         if t: out.append({"t": t, "s": f"40 Hadith of an-Nawawi, no. {h['idInBook']}", "ar": h["arabic"].replace(RLM, "").strip()})
+    out = sound_only(D, out, "ar", "English Forty (fallback)")
     json.dump(out, open(f"{OUT}/english/nawawi40.json", "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
 
 
-def attach_daily_sharh(OUT, sharh_items):
-    """Hadith of the day = the explained hadiths (sahih/hasan) when available; otherwise keep the old list,
-    attaching an explanation wherever the same hadith is found."""
+SAHIHAIN = re.compile(r"(متفق عليه|رواه البخاري|رواه مسلم|رواه البخارى|أخرجه البخاري|أخرجه مسلم|البخاري ومسلم)")
+
+
+def sound_only(D, items, text_key="t", label="hadiths"):
+    """Keeps only hadiths found sahih/hasan in the six books (al-Albani / the two Sahihs), or — when not found there —
+    those the source itself attributes to al-Bukhari or Muslim. Riyad as-Salihin and the Forty contain a few weak
+    hadiths (the data audit found 39 in the old daily list, e.g. «إذا رأيتم الرجل يعتاد المساجد»)."""
+    import hadith_books
+    out, dropped = [], []
+    for it in items:
+        g = hadith_books.grade_of(D, it[text_key])
+        ok = (g[2] == 0) if g else bool(SAHIHAIN.search(it[text_key]))
+        (out if ok else dropped).append(it)
+    print(f"{label}: kept {len(out)}, dropped {len(dropped)} weak or unverified")
+    return out
+
+
+def attach_daily_sharh(OUT, sharh_items, D=None):
+    """Hadith of the day = the explained hadiths (sahih/hasan) when available; otherwise the old list, sahih/hasan
+    only, attaching an explanation wherever the same hadith is found."""
     import hadith_sharh
     path = f"{OUT}/muslim/hadith_daily.json"
     if len(sharh_items) >= 300:
@@ -515,6 +563,7 @@ def attach_daily_sharh(OUT, sharh_items):
                  for h in sharh_items if len(h["t"]) <= 700]
     else:
         daily = json.load(open(path, encoding="utf-8"))
+        if D: daily = sound_only(D, daily, label="hadith of the day (fallback list)")
         idx = hadith_sharh.Index(sharh_items)
         for d in daily:
             sh = idx.find(d["t"])

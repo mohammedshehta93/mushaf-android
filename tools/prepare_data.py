@@ -210,12 +210,23 @@ def main():
     gharib = []
     gidx = {}     # (s,a,w) -> gharib id
     unmatched = 0
+    ayah_skel = {}
+    for k in sorted(words_text): ayah_skel[(k[0], k[1])] = ayah_skel.get((k[0], k[1]), "") + skel(words_text[k])
+    gharib_fixed = []
     for s in range(1, 115):
         for e in json.load(open(f"{D}/gharib/{s}.json")):
-            a = e["ayah"]
-            ws = sorted((k for k in words_text if k[0] == s and k[1] == a), key=lambda k: k[2])
             for m in re.finditer(r"﴿([^﴾]+)﴾\s*:?\s*(.+?)(?=\n\s*\n﴿|\n﴿|$)", e["text"], re.S):
+                a = e["ayah"]
                 phrase, meaning = m.group(1).strip(), m.group(2).strip()
+                # source slips found by the data audit (docs/AUDIT.md): a meaning paired with the wrong word,
+                # entries filed under the neighbouring ayah, and fragments with no meaning
+                if (s, a) == (10, 28) and skel(phrase).startswith("قطع"): phrase = "مَكَانَكُمۡ"; gharib_fixed.append(f"{s}:{a} word")
+                if not re.search(r"[ء-ي]", meaning) or meaning.startswith("["):     # «.» / «[الأنفال: ٣٠].»
+                    gharib_fixed.append(f"{s}:{a} dropped"); continue
+                if skel(phrase) not in ayah_skel.get((s, a), ""):
+                    near = [b for b in (a + 1, a - 1, a + 2, a - 2) if skel(phrase) in ayah_skel.get((s, b), "")]
+                    if near: gharib_fixed.append(f"{s}:{a}->{near[0]}"); a = near[0]
+                ws = sorted((k for k in words_text if k[0] == s and k[1] == a), key=lambda k: k[2])
                 target = skel(phrase)
                 best = None
                 for i in range(len(ws)):
@@ -232,7 +243,7 @@ def main():
                         gidx.setdefault(ws[j], gid)
                 else:
                     unmatched += 1
-    print(f"gharib entries {len(gharib)}, unmatched {unmatched}")
+    print(f"gharib entries {len(gharib)}, unmatched {unmatched}, corrected {gharib_fixed}")
     if unmatched > len(gharib) * 0.03: fail("too many unmatched gharib entries")
     for pg in pages:
         for l in pg["lines"]:

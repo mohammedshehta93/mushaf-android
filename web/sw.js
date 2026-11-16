@@ -18,11 +18,20 @@ self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;     // recitations stream from everyayah.com
   const isData = url.pathname.includes('/data/') || url.pathname.includes('/fonts/');
   if (isData) {
-    // data never changes within a version: cache first
-    e.respondWith(caches.match(e.request).then((hit) => hit || fetch(e.request).then((res) => {
-      if (res.ok) { const copy = res.clone(); caches.open(DATA).then((c) => c.put(e.request, copy)); }
-      return res;
-    })));
+    // data and fonts are kept on the phone (offline). Each copy is stamped with the version that stored it: after an
+    // update, data from an older version is fetched again once (corrections reach everyone), and still served if offline.
+    e.respondWith(caches.open(DATA).then(async (c) => {
+      const hit = await c.match(e.request);
+      if (hit && (url.pathname.includes('/fonts/') || hit.headers.get('x-mushaf-v') === VERSION)) return hit;
+      try {
+        const res = await fetch(e.request, { cache: 'no-cache' });
+        if (res.ok) {
+          const h = new Headers(res.headers); h.set('x-mushaf-v', VERSION);
+          c.put(e.request, new Response(await res.clone().blob(), { status: res.status, statusText: res.statusText, headers: h }));
+        }
+        return res;
+      } catch (err) { if (hit) return hit; throw err; }
+    }));
   } else {
     // app shell: network first (to get updates), cache when offline
     e.respondWith(fetch(e.request).then((res) => {

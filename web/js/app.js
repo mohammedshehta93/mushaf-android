@@ -2,6 +2,7 @@
 import { $, $$, ar, esc, store, json, font, loadMeta, normalize, toast, ui, isIOS, standalone, library } from './core.js';
 import { openHome, prayerChip } from './tools.js';
 import { startReading, intentionOptionsHtml, handleIntentionOption, whatsNew } from './extra.js';
+import { nuzulHtml, wireFull } from './surahs.js';
 
 const PAGES = 604;
 // QCF V2 (the current Madinah print). meta.maxLine = widest line of the whole Mushaf at size 100 (measured at build).
@@ -246,17 +247,19 @@ async function openTafsir(s, a) {
   const text = await json('data/text.json');
   const ayat = []; for (let k = b[0]; k <= b[1]; k++) ayat.push(`${text[`${s}:${k}`]} ${ar(k)}`);
   const range = b[0] === b[1] ? `الآية ${ar(b[0])}` : `الآيات ${ar(b[0])}–${ar(b[1])}`;
+  const nuzul = await nuzulHtml(s, b[0], b[1]);
   ui.screen({
     title: 'تفسير ابن كثير', sub: `سورة ${meta.surahs[s - 1].name} · ${range}`,
     actions: '<button class="icon" data-dec>أ-</button><button class="icon" data-inc>أ+</button>',
     render(body) {
       body.style.setProperty('--tafSize', `${store.get('tafSize', 19)}px`);
       body.innerHTML = `<div class="card quran">${ayat.map(esc).join(' ')}</div>
-        <div class="row"><button class="link" data-go>اذهب للآية في المصحف</button></div>
+        <div class="row"><button class="link" data-go>اذهب للآية في المصحف</button></div>${nuzul}
         <div class="taf">${b[2].split(/\n+/).filter((x) => x.trim()).map((p) => `<p>${styleTafsir(p)}</p>`).join('')}</div>
         <div class="row" style="gap:10px;margin-top:16px"><button class="btn o grow" data-prev>السابق</button><button class="btn o grow" data-next>التالي</button></div>
         <p class="muted">المصدر: تفسير القرآن العظيم للحافظ ابن كثير. النص الباهت بين قوسين من حواشي المحقق.</p>`;
       $('[data-go]', body).onclick = () => goTo(pageOf(s, b[0]), { s, a: b[0] });
+      wireFull(body);
       $('[data-prev]', body).onclick = () => (b[0] > 1 ? openTafsir(s, b[0] - 1) : s > 1 && openTafsir(s - 1, meta.surahs[s - 2].ayahs));
       $('[data-next]', body).onclick = () => (b[1] < meta.surahs[s - 1].ayahs ? openTafsir(s, b[1] + 1) : s < 114 && openTafsir(s + 1, 1));
       const sc = $('#screen');
@@ -433,6 +436,40 @@ export function shareApp() {
   else { navigator.clipboard?.writeText(`${text}\n${url}`); toast('تم نسخ الرابط'); }
 }
 
+// ---------------------------------------------------------------- update button
+// Every time the app is opened or comes back to the screen, the published version is compared with this one; if it
+// changed, a bar with «تحديث» appears (an app left open in the background would otherwise keep the old version).
+let lastCheck = 0;
+async function checkUpdate() {
+  const mine = document.querySelector('meta[name=app-version]')?.content;
+  if (!mine || mine === 'dev' || Date.now() - lastCheck < 60000 || $('#update-bar')) return;
+  lastCheck = Date.now();
+  try {
+    const html = await (await fetch('index.html', { cache: 'no-store' })).text();
+    const live = /name=["']?app-version["']?\s+content=["']([^"']+)/.exec(html)?.[1];
+    if (!live || live === mine) return;
+    const bar = document.createElement('div');
+    bar.id = 'update-bar';
+    bar.style.cssText = 'position:fixed;inset-inline:12px;top:calc(env(safe-area-inset-top) + 10px);z-index:1000;display:flex;gap:10px;align-items:center;padding:12px 14px;border-radius:14px;background:var(--bar);color:var(--onBar);box-shadow:0 6px 24px rgba(0,0,0,.25);font-size:15px';
+    bar.innerHTML = '<span style="flex:1">يوجد تحديث جديد للتطبيق</span><button data-up style="background:#fff;color:#0F4C3A;border:0;border-radius:10px;padding:8px 16px;font:inherit;font-weight:700">تحديث</button><button data-later style="background:none;border:0;color:var(--onBar);font:inherit;opacity:.8">لاحقًا</button>';
+    bar.querySelector('[data-up]').onclick = async () => {
+      bar.querySelector('[data-up]').textContent = '…';
+      // let the new version's service worker take over first, so the reload gets the new files and data
+      try {
+        const r = await navigator.serviceWorker?.getRegistration();
+        if (r) {
+          await r.update();
+          const sw = r.installing || r.waiting;
+          if (sw) await new Promise((ok) => { sw.addEventListener('statechange', () => { if (sw.state === 'activated' || sw.state === 'redundant') ok(); }); setTimeout(ok, 15000); });
+        }
+      } catch (e) {}
+      location.reload();
+    };
+    bar.querySelector('[data-later]').onclick = () => bar.remove();
+    document.body.appendChild(bar);
+  } catch (e) { /* offline: try again next time */ }
+}
+
 async function downloadAll(label) {
   if (!('caches' in window)) { toast('المتصفح لا يدعم التنزيل'); return; }
   try {
@@ -442,7 +479,7 @@ async function downloadAll(label) {
     const worker = async () => {
       while (list.length) {
         const u = list.shift();
-        if (!(await c.match(u))) { try { await c.add(u); } catch (e) {} }
+        if (!(await c.match(u))) { try { if (navigator.serviceWorker?.controller) await fetch(u); else await c.add(u); } catch (e) {} }
         done++; if (done % 20 === 0) label.textContent = `جارٍ التنزيل… ${ar(Math.round((done / (done + list.length)) * 100))}٪`;
       }
     };
@@ -500,7 +537,9 @@ export const app = { stopAudio: () => { if (player.cur) player.stop(); }, goTo, 
   pageEl(current).scrollIntoView({ block: 'nearest', inline: 'start' });
   onPageChange(current);
   $('#splash').style.opacity = 0; setTimeout(() => $('#splash').remove(), 300);
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => {});
+  checkUpdate();
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkUpdate(); });
   whatsNew(document.querySelector('meta[name=app-version]')?.content || 'dev');
   setTimeout(() => { if ($('#sheet').classList.contains('hidden')) showInstall(); }, 2500);
 })();

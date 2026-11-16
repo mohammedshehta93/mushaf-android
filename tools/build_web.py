@@ -39,10 +39,19 @@ def main():
     # data (only what the web version uses)
     data = os.path.join(OUT, "data")
     os.makedirs(data)
-    for f in ["meta.json", "gharib.json", "text.json", "reciters.json", "reading.json", "whatsnew.json"]:
+    for f in ["meta.json", "gharib.json", "text.json", "reciters.json", "reading.json", "whatsnew.json", "surahs_info.json"]:
         shutil.copy(os.path.join(A, f), data)
-    for d in ["pages", "tafsir", "muslim", "listen", "learn", "english"]:
+    for d in ["pages", "tafsir", "muslim", "listen", "learn", "english", "hadith"]:
         shutil.copytree(os.path.join(A, d), os.path.join(data, d))
+    # hadith search: the plain-letter index and number/verdict per line (the texts are fetched only for the hits)
+    sys.path.insert(0, here)
+    import hadith_books
+    for b, _ in hadith_books.BOOKS:
+        lines = open(os.path.join(data, "hadith", f"{b}.txt"), encoding="utf-8").read().rstrip("\n").split("\n")
+        rows = [l.split("\t", 3) for l in lines]
+        open(os.path.join(data, "hadith", f"{b}.plain"), "w", encoding="utf-8").write(
+            "\n".join(hadith_books.norm_with_index(r[3])[0].rstrip() for r in rows))
+        open(os.path.join(data, "hadith", f"{b}.meta"), "w", encoding="utf-8").write("\n".join(f"{r[0]}\t{r[1]}" for r in rows))
 
     # fonts: the QCF V2 page fonts are already WOFF2 (prepared by prepare_data.py); the official Hafs font and the
     # basmala font are compressed here

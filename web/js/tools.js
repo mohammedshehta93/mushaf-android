@@ -3,6 +3,8 @@ import { $, $$, ar, esc, store, json, normalize, toast, ui, isIOS, library } fro
 import { METHODS, NAMES, method, compute, qibla, distanceToKaaba, fmt, CITIES } from './prayer.js';
 import { app } from './app.js';
 import { hadithHtml, openVirtues, openHadithLibrary, openEnglish } from './extra.js';
+import { openHadithCheck } from './hadith.js';
+import { openSurahInfo } from './surahs.js';
 
 // ---------------------------------------------------------------- Hijri (Umm al-Qura calendar built into the browser)
 const HMONTHS = ['محرّم', 'صفر', 'ربيع الأول', 'ربيع الآخر', 'جمادى الأولى', 'جمادى الآخرة', 'رجب', 'شعبان', 'رمضان', 'شوّال', 'ذو القعدة', 'ذو الحجة'];
@@ -23,9 +25,9 @@ export function hijri(date = new Date()) {
 }
 const hijriText = (h) => `${ar(h.d)} ${HMONTHS[h.m - 1]} ${ar(h.y)}هـ`;
 const OCCASIONS = [
-  ['رأس السنة الهجرية', 1, 1, ''], ['يوم عاشوراء', 1, 10, 'يُستحب صيامه مع التاسع'], ['بداية شهر رمضان', 9, 1, ''],
-  ['العشر الأواخر من رمضان', 9, 21, 'التماس ليلة القدر'], ['عيد الفطر', 10, 1, ''], ['بداية عشر ذي الحجة', 12, 1, 'أفضل أيام الدنيا'],
-  ['يوم عرفة', 12, 9, 'صيامه يكفّر سنتين لغير الحاج'], ['عيد الأضحى', 12, 10, ''],
+  ['رأس السنة الهجرية', 1, 1, ''], ['يوم تاسوعاء', 1, 9, '«لئن بقيت إلى قابل لأصومن التاسع» (مسلم 1134)'], ['يوم عاشوراء', 1, 10, 'صيامه يكفّر السنة التي قبله (مسلم 1162)'], ['بداية شهر رمضان', 9, 1, ''],
+  ['العشر الأواخر من رمضان', 9, 21, 'التماس ليلة القدر'], ['عيد الفطر', 10, 1, ''], ['بداية عشر ذي الحجة', 12, 1, '«ما العمل في أيام العشر أفضل من العمل في هذه» (البخاري 969)'],
+  ['يوم عرفة', 12, 9, 'صيامه يكفّر السنة التي قبله والتي بعده (مسلم 1162)'], ['عيد الأضحى', 12, 10, ''],
 ];
 function findHijri(y, m, d) {
   const start = Date.now() - 400 * 864e5;
@@ -60,10 +62,10 @@ export function prayerChip() { const n = nextPrayer(); return n ? ` · ${NAMES[n
 
 // ---------------------------------------------------------------- home hub
 const HOME_SECTIONS = [
-  ['القرآن الكريم', [['index', '☰', 'فهرس المصحف'], ['virtues', '💚', 'فضل القرآن'], ['search', '🔍', 'البحث في القرآن'], ['tajweed', '🗣', 'تعلّم التجويد'], ['marks', '🔖', 'العلامات']]],
+  ['القرآن الكريم', [['index', '☰', 'فهرس المصحف'], ['virtues', '💚', 'فضل القرآن'], ['surahinfo', '📖', 'مقاصد السور وأسباب النزول'], ['search', '🔍', 'البحث في القرآن'], ['tajweed', '🗣', 'تعلّم التجويد'], ['marks', '🔖', 'العلامات']]],
   ['الصلاة والعبادات اليومية', [['prayer', '🕰', 'مواقيت الصلاة'], ['qibla', '🧭', 'القبلة'], ['azkar', '📿', 'الأذكار'], ['tasbih', '👆', 'السبحة'],
     ['hijri', '🗓', 'التقويم الهجري'], ['ramadan', '🌙', 'رمضان'], ['zakat', '🧮', 'الزكاة']]],
-  ['طلب العلم', [['sheikhs', '🎓', 'الشيوخ والدروس'], ['poems', '📜', 'المتون والمنظومات'], ['hadiths', '❝', 'أحاديث مشروحة'], ['names', '✨', 'أسماء الله الحسنى']]],
+  ['طلب العلم', [['sheikhs', '🎓', 'الشيوخ والدروس'], ['poems', '📜', 'المتون والمنظومات'], ['hadiths', '❝', 'أحاديث مشروحة'], ['hadithcheck', '✔', 'تحقّق من حديث'], ['names', '✨', 'أسماء الله الحسنى']]],
   ['English', [['english', '🌍', 'English corner']]],
   ['استمع', [['radio', '📻', 'إذاعات القرآن'], ['nasheed', '🎧', 'قصائد ومتون صوتية']]],
   ['التطبيق', [['settings', '⚙', 'الإعدادات'], ['share', '↗', 'شارك التطبيق']]],
@@ -108,7 +110,7 @@ export function openHome() {
         ({
           prayer: () => openPrayer(), qibla: openQibla, azkar: () => openAzkar(), tasbih: openTasbih, hijri: openHijri,
           ramadan: openRamadan, names: openNames, zakat: openZakat, radio: () => openRadio(0), nasheed: () => openRadio(1),
-          sheikhs: openSheikhs, poems: openPoems, tajweed: openTajweed, virtues: openVirtues, hadiths: openHadithLibrary, english: openEnglish, settings: app.openSettings, tafsir: () => app.openTafsir?.(), index: () => app.openIndex(), search: app.openSearch,
+          sheikhs: openSheikhs, poems: openPoems, tajweed: openTajweed, virtues: openVirtues, hadiths: openHadithLibrary, hadithcheck: openHadithCheck, surahinfo: () => openSurahInfo(), english: openEnglish, settings: app.openSettings, tafsir: () => app.openTafsir?.(), index: () => app.openIndex(), search: app.openSearch,
           marks: () => app.openIndex('marks'), share: app.shareApp,
         })[g.dataset.go]?.();
       };
@@ -375,8 +377,8 @@ async function openNames() {
   ui.screen({
     title: 'أسماء الله الحسنى', sub: '«ولله الأسماء الحسنى فادعوه بها»',
     render(body) {
-      body.innerHTML = names.map((n, i) => `<details style="border-bottom:1px solid rgba(128,128,128,.15);padding:8px 0"><summary class="row" style="list-style:none">
-        <span class="muted" style="width:32px">${ar(i + 1)}</span><span class="quran grow" style="color:var(--gharib);font-size:26px">${esc(n.n)}</span><span class="muted">${ar(n.r.length)} موضع</span></summary>
+      body.innerHTML = `<p class="muted" style="line-height:1.8">قال النبي ﷺ: «إِنَّ لِلَّهِ تِسْعَةً وَتِسْعِينَ اسْمًا مِائَةً إِلاَّ وَاحِدًا، مَنْ أَحْصَاهَا دَخَلَ الْجَنَّةَ» (صحيح البخاري 7392). أما سرد الأسماء بهذا الترتيب فهو في جامع الترمذي (3507) وإسناده ضعيف (الألباني)، ولم يثبت تعيينها في حديث صحيح. والآيات تحت كل اسم: مواضع الاسم أو ما دلّ على معناه.</p>` + names.map((n, i) => `<details style="border-bottom:1px solid rgba(128,128,128,.15);padding:8px 0"><summary class="row" style="list-style:none">
+        <span class="muted" style="width:32px">${ar(i + 1)}</span><span class="quran grow" style="color:var(--gharib);font-size:26px">${esc(n.n)}</span><span class="muted">${ar(n.r.length)} آية</span></summary>
         ${n.r.slice(0, 6).map(([s, a]) => `<button class="item" style="display:block" data-s="${s}" data-a="${a}"><div class="muted">سورة ${esc(meta.surahs[s - 1].name)} · ${ar(a)}</div><div class="quran" style="font-size:19px">${esc(text[`${s}:${a}`] || '')}</div></button>`).join('')}</details>`).join('');
       body.onclick = (e) => { const b = e.target.closest('[data-s]'); if (b) { const s = +b.dataset.s, a = +b.dataset.a; app.goTo(meta.ap[s - 1][a - 1], { s, a }); } };
     },

@@ -52,6 +52,7 @@ import com.shehta.mushaf.data.Prefs
 import com.shehta.mushaf.data.Quran
 import com.shehta.mushaf.data.TafsirBlock
 import com.shehta.mushaf.data.Tafsirs
+import com.shehta.mushaf.data.SurahInfo
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.FilterChip
@@ -138,6 +139,19 @@ fun TafsirScreen(startS: Int, startA: Int, prefs: Prefs, onBack: () -> Unit, onG
                                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                                         TextButton(onClick = { onGo(s, b.from) }) { Text("اذهب للآية في المصحف") }
                                         IconButton(onClick = { copyAyah(context, s, a) }) { Icon(Icons.Filled.ContentCopy, "نسخ") }
+                                    }
+                                }
+                            }
+                        }
+                        // what the six books report (sahih/hasan) about the revelation of these ayahs
+                        val nz = (b.from..b.to).flatMap { x -> SurahInfo.nuzul(s, x).map { x to it } }
+                        if (nz.isNotEmpty()) item {
+                            Surface(shape = RoundedCornerShape(16.dp), color = colors.frameFill, modifier = Modifier.fillMaxWidth().padding(top = 10.dp)) {
+                                Column(Modifier.padding(14.dp)) {
+                                    Text("ما ورد في نزول الآية", fontWeight = FontWeight.Bold, color = colors.gharib, fontSize = 16.sp)
+                                    nz.forEach { (x, r) ->
+                                        if (b.from != b.to) Text("الآية ${x.ar()}", fontSize = 12.sp, color = colors.muted, modifier = Modifier.padding(top = 6.dp))
+                                        NuzulView(colors, r, prefs.tafsirFontSize.toInt())
                                     }
                                 }
                             }

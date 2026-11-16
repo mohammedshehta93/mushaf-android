@@ -286,13 +286,14 @@ fun NamesScreen(c: MushafColors, onBack: () -> Unit, onGo: (Int, Int) -> Unit) {
     var open by remember { mutableStateOf<Int?>(null) }
     ScreenScaffold("أسماء الله الحسنى", c, onBack, subtitle = "«ولله الأسماء الحسنى فادعوه بها»") {
         LazyColumn(contentPadding = PaddingValues(12.dp)) {
+            item { Text("قال النبي ﷺ: «إِنَّ لِلَّهِ تِسْعَةً وَتِسْعِينَ اسْمًا مِائَةً إِلاَّ وَاحِدًا، مَنْ أَحْصَاهَا دَخَلَ الْجَنَّةَ» (صحيح البخاري 7392). أما سرد الأسماء بهذا الترتيب فهو في جامع الترمذي (3507) وإسناده ضعيف (الألباني)، ولم يثبت تعيينها في حديث صحيح. والآيات تحت كل اسم: مواضع الاسم أو ما دلّ على معناه.", fontSize = 13.sp, lineHeight = 22.sp, color = c.muted, modifier = Modifier.padding(bottom = 8.dp)) }
             items(names.size) { i ->
                 val n = names[i]
                 Column(Modifier.fillMaxWidth().clickable { open = if (open == i) null else i }.padding(vertical = 10.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text((i + 1).ar(), color = c.muted, modifier = Modifier.width(36.dp))
                         Text(n.name, fontFamily = hafsFamily, fontSize = 26.sp, color = c.gharib, modifier = Modifier.weight(1f))
-                        if (n.refs.isNotEmpty()) Text("${n.refs.size.ar()} موضع", fontSize = 12.sp, color = c.muted)
+                        if (n.refs.isNotEmpty()) Text("${n.refs.size.ar()} آية", fontSize = 12.sp, color = c.muted)
                     }
                     if (open == i) n.refs.take(6).forEach { r ->
                         Column(Modifier.fillMaxWidth().clickable { onGo(r[0], r[1]) }.padding(top = 8.dp, start = 36.dp)) {

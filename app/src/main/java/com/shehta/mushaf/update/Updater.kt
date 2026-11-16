@@ -13,7 +13,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -53,10 +56,21 @@ object Updater {
 
     fun init(context: Context) { app = context.applicationContext }
 
-    /** Automatic check at most once a day; silent unless an update exists. */
-    fun checkDaily(prefs: Prefs) {
+    /** The latest update found (kept after «لاحقًا» so it is offered again the next time the app is opened). */
+    private var pending: UpdateState.Available? = null
+    private var checkedSinceStart = false
+
+    /**
+     * Automatic check every time the app is opened or brought back to the screen (at most once every 10 minutes, so
+     * switching between apps does not call GitHub repeatedly); silent unless an update exists. An update already found
+     * is offered again at once on every opening until it is installed.
+     */
+    fun checkOnOpen(prefs: Prefs) {
+        if (state !is UpdateState.Idle) return
+        pending?.let { if (it.versionCode > BuildConfig.VERSION_CODE) { state = it; return } }
         val now = System.currentTimeMillis()
-        if (now - prefs.lastUpdateCheck < 24L * 3600 * 1000) return
+        if (checkedSinceStart && now - prefs.lastUpdateCheck in 0 until 10L * 60 * 1000) return
+        checkedSinceStart = true          // a fresh start of the app always checks
         prefs.lastUpdateCheck = now
         check(false)
     }
@@ -73,6 +87,7 @@ object Updater {
             } catch (e: Exception) {
                 if (user) UpdateState.Failed("تعذّر الاتصال. تأكد من الإنترنت ثم حاول مرة أخرى.") else UpdateState.Idle
             }
+            (state as? UpdateState.Available)?.let { pending = it }
             if (!user && state is UpdateState.UpToDate) state = UpdateState.Idle
         }
     }
@@ -160,10 +175,16 @@ object Updater {
 
 @Composable
 fun UpdateDialog(prefs: Prefs) {
-    LaunchedEffect(Unit) { Updater.checkDaily(prefs) }
+    // every time the app comes to the screen (cold start or back from the background)
+    val owner = LocalLifecycleOwner.current
+    DisposableEffect(owner) {
+        val obs = LifecycleEventObserver { _, e -> if (e == Lifecycle.Event.ON_START) Updater.checkOnOpen(prefs) }
+        owner.lifecycle.addObserver(obs)
+        onDispose { owner.lifecycle.removeObserver(obs) }
+    }
     when (val s = Updater.state) {
         is UpdateState.Available -> AlertDialog(
-            onDismissRequest = { Updater.dismiss() },
+            onDismissRequest = {},
             title = { Text("يوجد تحديث جديد") },
             text = { Text("الإصدار ${s.versionName} متاح. سيتم تنزيله وتثبيته فوق النسخة الحالية مع الاحتفاظ بعلاماتك وإعداداتك." + if (s.notes.isNotBlank()) "\n\n${s.notes.take(600)}" else "") },
             confirmButton = { TextButton(onClick = { Updater.download(s) }) { Text("تحديث") } },

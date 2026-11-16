@@ -30,7 +30,7 @@ object Reading {
         val a = root.optJSONArray("virtues") ?: JSONArray()
         List(a.length()) { i ->
             val g = a.getJSONObject(i); val its = g.getJSONArray("items")
-            Group(g.getString("title"), List(its.length()) { item(its.getJSONObject(it)) })
+            Group(g.getString("title"), List(its.length()) { its.getJSONObject(it).let { o -> item(o, o.optString("h")) } }, g.optString("note"))
         }
     }
 }

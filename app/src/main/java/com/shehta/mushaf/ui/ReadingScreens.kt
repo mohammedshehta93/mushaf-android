@@ -89,7 +89,8 @@ fun HadithBody(c: MushafColors, h: DailyHadith, fontSize: Int = 17, startOpen: B
 
 /** An ayah (Mushaf font) or a hadith. */
 @Composable
-fun RItemView(c: MushafColors, item: RItem, onGo: ((Int, Int) -> Unit)?) {
+fun RItemView(c: MushafColors, item: RItem, onGo: ((Int, Int) -> Unit)?, heading: Boolean = false) {
+    if (heading && item.label.isNotEmpty()) Text(item.label, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = c.gharib, modifier = Modifier.padding(bottom = 4.dp))
     if (item.isAyah) {
         Text("﴿${item.text}﴾", fontFamily = hafsFamily, fontSize = 22.sp, lineHeight = 42.sp, textAlign = TextAlign.Justify)
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -160,11 +161,14 @@ fun VirtuesScreen(c: MushafColors, onBack: () -> Unit, onGo: (Int, Int) -> Unit,
                     Text("نوايا قبل القراءة ›", fontWeight = FontWeight.Bold, fontSize = 17.sp, color = c.gharib)
                     Text("استحضر نواياك قبل أن تبدأ.", fontSize = 13.sp, color = c.muted)
                 }
-                Text("الآيات من النص الرسمي لمجمع الملك فهد، والأحاديث بنصها من «رياض الصالحين» مع تخريجها.", fontSize = 12.sp, color = c.muted, modifier = Modifier.padding(top = 6.dp))
+                Text("الآيات من النص الرسمي لمجمع الملك فهد، والأحاديث بنصها من «رياض الصالحين» والكتب الستة مع رقم الحديث وحكمه.", fontSize = 12.sp, color = c.muted, modifier = Modifier.padding(top = 6.dp))
             }
             Reading.virtues.forEach { g ->
-                item { Text(g.title, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = c.gharib, modifier = Modifier.padding(top = 10.dp)) }
-                items(g.items) { it -> Card2(c) { RItemView(c, it, onGo) } }
+                item {
+                    Text(g.title, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = c.gharib, modifier = Modifier.padding(top = 10.dp))
+                    if (g.note.isNotEmpty()) Text(g.note, fontSize = 13.sp, color = c.muted)
+                }
+                items(g.items) { it -> Card2(c) { RItemView(c, it, onGo, heading = true) } }
             }
         }
     }

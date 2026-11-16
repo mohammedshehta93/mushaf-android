@@ -16,6 +16,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.Topic
+import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.CalendarMonth
@@ -172,6 +174,7 @@ fun HomeScreen(mp: MuslimPrefs, c: MushafColors, onBack: () -> Unit, onPick: (St
             val sections: List<Pair<String, List<Triple<String, ImageVector, String>>>> = listOf(
                 "القرآن الكريم" to listOf(
                     Triple("virtues", Icons.Filled.Favorite, "فضل القرآن"),
+                    Triple("surahinfo", Icons.Filled.Topic, "مقاصد السور وأسباب النزول"),
                     Triple("search", Icons.Filled.Search, "البحث في القرآن"),
                     Triple("tafsir", Icons.Filled.AutoStories, "التفسير"),
                     Triple("tajweed", Icons.Filled.RecordVoiceOver, "تعلّم التجويد"),
@@ -195,6 +198,7 @@ fun HomeScreen(mp: MuslimPrefs, c: MushafColors, onBack: () -> Unit, onPick: (St
                     Triple("sheikhs", Icons.Filled.School, "الشيوخ والدروس"),
                     Triple("poems", Icons.AutoMirrored.Filled.LibraryBooks, "المتون والمنظومات"),
                     Triple("hadiths", Icons.Filled.FormatQuote, "أحاديث مشروحة"),
+                    Triple("hadithcheck", Icons.Filled.VerifiedUser, "تحقّق من حديث"),
                     Triple("fiqh", Icons.Filled.Gavel, "تعلّم الفقه"),
                     Triple("names", Icons.Filled.Star, "أسماء الله الحسنى"),
                 ),

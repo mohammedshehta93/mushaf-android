@@ -15,7 +15,9 @@ class TafsirSource(val id: String, val name: String, val slug: String?)
 object Tafsirs {
     val sources = listOf(
         TafsirSource("ibnkathir", "ابن كثير", null),
-        TafsirSource("saadi", "السعدي", "ar-tafseer-al-saddi"),
+        // «ar-tafsir-as-saadi»: each entry labelled with its ayahs ({106}, {285 ـ 286}). The older «ar-tafseer-al-saddi»
+        // had paragraphs filed under the wrong ayahs (audit: 2:108–112 showed the commentary on 2:106) and 59 gaps.
+        TafsirSource("saadi2", "السعدي", "ar-tafsir-as-saadi"),
         TafsirSource("muyassar", "الميسّر", "ar-tafsir-muyassar"),
         TafsirSource("tabari", "الطبري", "ar-tafsir-al-tabari"),
         TafsirSource("qurtubi", "القرطبي", "ar-tafseer-al-qurtubi"),
@@ -25,31 +27,41 @@ object Tafsirs {
     private lateinit var dir: File
     private val cache = HashMap<String, List<TafsirBlock>>()
 
-    fun init(context: Context) { dir = File(context.filesDir, "tafsir").apply { mkdirs() } }
+    fun init(context: Context) {
+        dir = File(context.filesDir, "tafsir").apply { mkdirs() }
+        File(dir, "saadi").deleteRecursively()          // the misaligned edition, if it was downloaded before
+    }
 
-    fun source(id: String) = sources.firstOrNull { it.id == id } ?: sources[0]
+    private fun key(id: String) = if (id == "saadi") "saadi2" else id
 
-    fun isDownloaded(id: String, s: Int): Boolean = source(id).slug == null || File(dir, "$id/$s.json").exists()
+    fun source(id: String) = sources.firstOrNull { it.id == (if (id == "saadi") "saadi2" else id) } ?: sources[0]
 
-    fun downloadedCount(id: String): Int = if (source(id).slug == null) 114 else (File(dir, id).list()?.size ?: 0)
+    fun isDownloaded(id: String, s: Int): Boolean = source(id).slug == null || File(dir, "${key(id)}/$s.json").exists()
+
+    fun downloadedCount(id: String): Int = if (source(id).slug == null) 114 else (File(dir, key(id)).list()?.size ?: 0)
 
     /** Blocking: call from a background thread. Throws if the surah is not on the phone and there is no internet. */
     fun blocks(id: String, s: Int): List<TafsirBlock> {
         val src = source(id)
         if (src.slug == null) return Quran.tafsir(s)
-        synchronized(cache) { cache["$id:$s"]?.let { return it } }
-        val f = File(dir, "$id/$s.json")
+        synchronized(cache) { cache["${key(id)}:$s"]?.let { return it } }
+        val f = File(dir, "${key(id)}/$s.json")
         if (!f.exists()) download(src, s, f)
         val arr = JSONArray(f.readText())
         val groups = ArrayList<TafsirBlock>()
         for (i in 0 until arr.length()) {
             val o = arr.getJSONObject(i)
-            val a = o.getInt("ayah"); val t = o.getString("text")
+            val a = o.getInt("ayah"); var t = o.getString("text")
+            // an ayah given the commentary of a LATER ayah (as-Saadi has a few: 6:105–107 carry «{108}…»): say so
+            Regex("^\\s*\\{\\s*(\\d+)").find(t)?.groupValues?.get(1)?.toIntOrNull()?.let { lo ->
+                if (lo > a) t = "لم يُفرد المفسّر هذه الآية بكلام مستقل في هذا المصدر؛ انظر تفسير الآية ${lo.ar()}."
+            }
+            if (t.isBlank()) t = "لا يوجد في هذا المصدر كلام مستقل على هذه الآية."
             val last = groups.lastOrNull()
             if (last != null && last.text == t) groups[groups.size - 1] = TafsirBlock(last.from, a, t)
             else groups += TafsirBlock(a, a, t)
         }
-        synchronized(cache) { cache["$id:$s"] = groups }
+        synchronized(cache) { cache["${key(id)}:$s"] = groups }
         return groups
     }
 
@@ -70,11 +82,11 @@ object Tafsirs {
         val src = source(id)
         if (src.slug == null) return
         for (s in 1..114) {
-            val f = File(dir, "$id/$s.json")
+            val f = File(dir, "${key(id)}/$s.json")
             if (!f.exists()) download(src, s, f)
             progress(s)
         }
     }
 
-    fun delete(id: String) { File(dir, id).deleteRecursively(); synchronized(cache) { cache.keys.removeAll { it.startsWith("$id:") } } }
+    fun delete(id: String) { File(dir, key(id)).deleteRecursively(); synchronized(cache) { cache.keys.removeAll { it.startsWith("${key(id)}:") } } }
 }

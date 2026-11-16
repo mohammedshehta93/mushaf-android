@@ -68,18 +68,21 @@ object Fiqh {
     fun quiz(book: Int, size: Int = 10, seed: Long = System.currentTimeMillis()): List<QuizQuestion> {
         val rnd = Random(seed)
         val pool = books()[book].hadiths
+        // only sound hadiths are quizzed on (narrator / complete the hadith): a weak or fabricated text must not be
+        // memorised as the Prophet's words; the grade question still uses every graded hadith
+        val sound = setOf("صحيح", "حسن", "صحيح لغيره", "حسن لغيره")
         val narrators = pool.map { it.narrator }.filter { it.isNotBlank() }.distinct()
-        val allWords = all().map { it.prophetWords }.filter { it.split(" ").size >= 6 }
+        val allWords = all().filter { it.grade in sound }.map { it.prophetWords }.filter { it.split(" ").size >= 6 }
         val out = ArrayList<QuizQuestion>()
         for (h in pool.shuffled(rnd)) {
             if (out.size >= size) break
             when (rnd.nextInt(3)) {
-                0 -> if (h.narrator.isNotBlank() && narrators.size >= 4 && h.prophetWords.isNotBlank()) {
+                0 -> if (h.grade in sound && h.narrator.isNotBlank() && narrators.size >= 4 && h.prophetWords.isNotBlank()) {
                     val opts = (narrators.filter { it != h.narrator }.shuffled(rnd).take(3) + h.narrator).shuffled(rnd)
                     out += QuizQuestion("من راوي هذا الحديث؟", "«${h.prophetWords.take(220)}»", opts, opts.indexOf(h.narrator),
                         "رواه ${h.narrator} — ${h.takhrij}")
                 }
-                1 -> {
+                1 -> if (h.grade in sound) {
                     val words = h.prophetWords.split(Regex("\\s+")).filter { it.isNotBlank() }
                     if (words.size >= 8) {
                         val cut = (words.size * 0.6).toInt().coerceIn(4, words.size - 3)

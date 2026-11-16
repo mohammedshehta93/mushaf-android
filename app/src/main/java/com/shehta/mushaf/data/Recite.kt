@@ -86,6 +86,8 @@ class ReciteMatcher(val words: List<ExpectedWord>, var threshold: Float = 0.7f, 
     private var partialRaw: List<String> = emptyList()
     private var skipNext = 0                                   // tokens of the current utterance already used up
     private val okEver = BooleanArray(words.size)              // correct and followed by more: stays correct
+    private val flagged = BooleanArray(words.size)             // a mistake once announced stays a mistake
+    private var freeLead = false                               // after a correction/prompt: re-reading before the frontier is free
 
     init { for (i in 0 until start) state[i] = WordState.GIVEN; skipAuto() }
 
@@ -128,9 +130,21 @@ class ReciteMatcher(val words: List<ExpectedWord>, var threshold: Float = 0.7f, 
         // everything heard so far is accounted for
         skipNext += partial.size
         committed.clear(); committedRaw.clear(); boundaries.clear(); partial = emptyList(); partialRaw = emptyList()
-        base = i + 1; pos = i + 1; skipAuto()
+        base = i + 1; pos = i + 1; skipAuto(); freeLead = true
         for (j in pos until words.size) if (state[j] != WordState.OK || !okEver[j]) state[j] = WordState.HIDDEN
         return i
+    }
+
+    /**
+     * After the app has corrected the reciter aloud (the recogniser was stopped, a new session starts): everything
+     * up to the frontier is settled, and he may re-read from the start of the ayah before going on.
+     */
+    fun resumeAfterCorrection() {
+        skipNext = 0
+        committed.clear(); committedRaw.clear(); boundaries.clear(); partial = emptyList(); partialRaw = emptyList()
+        for (j in base until pos) if (state[j] == WordState.OK) okEver[j] = true
+        base = pos; freeLead = true
+        for (j in pos until words.size) if (!okEver[j] && !flagged[j]) state[j] = WordState.HIDDEN
     }
 
     private val anyOk get() = okEver.any { it }
@@ -157,6 +171,7 @@ class ReciteMatcher(val words: List<ExpectedWord>, var threshold: Float = 0.7f, 
         fun ins(i: Int, j: Int): Float {
             val t = tok[i - 1]
             if ((j < m && E[j].auto) || (j > 0 && E[j - 1].auto)) return 0f                       // letter names of «الٓمٓ»
+            if (j == 0 && freeLead) return 0f                                                        // re-reading after a correction
             if (ReciteText.isPreamble(t) && ((j == 0 && preambleFree) || (j < m && E[j].a == 1 && E[j].w == 1))) return 0f
             if (j > 0 && sim[i - 1][j - 1] >= threshold) return -0.3f                               // repeated the last word
             if (j > 1 && sim[i - 1][j - 2] >= threshold) return -0.4f
@@ -201,6 +216,7 @@ class ReciteMatcher(val words: List<ExpectedWord>, var threshold: Float = 0.7f, 
             val g = base + k
             val okAfter = (k + 1..lastOk).count { lab[it] == 1 }
             state[g] = when {
+                flagged[g] -> state[g]
                 okEver[g] || lab[k] == 1 -> { if (k < lastOk) okEver[g] = true; WordState.OK }
                 lab[k] == 2 && ((k < lastOk && okAfter >= 2) || (final && k <= lastOk + 1)) -> { said[g] = raw.getOrElse(at[k]) { "" }; WordState.WRONG }
                 k < lastOk && (okAfter >= 2 || final) && lab[k] == 3 -> WordState.SKIPPED
@@ -218,10 +234,12 @@ class ReciteMatcher(val words: List<ExpectedWord>, var threshold: Float = 0.7f, 
                 repeat(drop) { committed.removeAt(0); committedRaw.removeAt(0) }
                 val nb = HashSet<Int>(); for (x in boundaries) if (x - drop >= 0) nb += x - drop
                 boundaries.clear(); boundaries += nb
-                base += cut + 1
+                base += cut + 1; freeLead = false
             }
         }
-        return (0 until words.size).filter { (state[it] == WordState.WRONG || state[it] == WordState.SKIPPED) && before[it] != state[it] }
+        val news = (0 until words.size).filter { (state[it] == WordState.WRONG || state[it] == WordState.SKIPPED) && before[it] != state[it] }
+        for (k in news) flagged[k] = true
+        return news
     }
 
     /** Wrong, skipped and prompted words. */

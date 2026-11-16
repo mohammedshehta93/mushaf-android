@@ -15,7 +15,7 @@ import java.net.URLEncoder
 class Sheikh(val name: String, val query: String, val desc: String)
 class Track(val title: String, val url: String)
 class Poem(val name: String, val author: String, val desc: String, val query: String, val tracks: List<Track> = emptyList(), val source: String = "")
-class Group<T>(val title: String, val items: List<T>)
+class Group<T>(val title: String, val items: List<T>, val note: String = "")
 class Topic(val name: String, val query: String, val desc: String = "")
 
 class TajweedExample(val s: Int, val a: Int, val text: String, val from: Int, val to: Int, val rule: String)

@@ -155,6 +155,8 @@ sealed class Overlay {
     object Intentions : Overlay()
     object Virtues : Overlay()
     object HadithLibrary : Overlay()
+    object HadithCheck : Overlay()
+    object SurahInfo : Overlay()
     object English : Overlay()
     class Recite(val review: Boolean = false) : Overlay()
     class Prayer(val tab: Int = 0) : Overlay()
@@ -550,6 +552,8 @@ fun App(prefs: Prefs, mp: MuslimPrefs) {
                         "virtues" -> overlay = Overlay.Virtues
                         "intentions" -> overlay = Overlay.Intentions
                         "hadiths" -> overlay = Overlay.HadithLibrary
+                        "hadithcheck" -> overlay = Overlay.HadithCheck
+                        "surahinfo" -> overlay = Overlay.SurahInfo
                         "english" -> overlay = Overlay.English
                         "recite" -> overlay = Overlay.Recite()
                         "review" -> overlay = Overlay.Recite(review = true)
@@ -581,6 +585,8 @@ fun App(prefs: Prefs, mp: MuslimPrefs) {
             Overlay.Virtues -> VirtuesScreen(colors, onBack = { overlay = Overlay.Home }, onGo = { s, a -> goTo(Quran.pageOf(s, a), Selection(s, a)) },
                 onIntentions = { overlay = Overlay.Intentions })
             Overlay.HadithLibrary -> HadithLibraryScreen(colors, onBack = { overlay = Overlay.Home })
+            Overlay.HadithCheck -> HadithCheckScreen(colors, onBack = { overlay = Overlay.Home })
+            Overlay.SurahInfo -> SurahInfoScreen(colors, onBack = { overlay = Overlay.Home }, onGo = { s, a -> goTo(Quran.pageOf(s, a), Selection(s, a)) })
             is Overlay.Recite -> ReciteScreen(colors, prefs, current, o.review, onBack = { overlay = Overlay.Home })
             Overlay.English -> EnglishScreen(colors, listenPrefs, onBack = { overlay = Overlay.Home },
                 onGo = { s, a -> goTo(Quran.pageOf(s, a), Selection(s, a)) })

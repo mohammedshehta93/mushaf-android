@@ -43,7 +43,7 @@ class Prefs(context: Context) {
     var volumeKeys by mutableStateOf(sp.getBoolean("volumeKeys", true)); private set
     var showPageNumber by mutableStateOf(sp.getBoolean("pageNo", true)); private set
     var twoPagesLandscape by mutableStateOf(sp.getBoolean("twoPages", true)); private set
-    var tafsirSource by mutableStateOf(sp.getString("tafsirSrc", "ibnkathir") ?: "ibnkathir"); private set
+    var tafsirSource by mutableStateOf((sp.getString("tafsirSrc", "ibnkathir") ?: "ibnkathir").let { if (it == "saadi") "saadi2" else it }); private set
     var lastUpdateCheck: Long
         get() = sp.getLong("updCheck", 0)
         set(v) = sp.edit().putLong("updCheck", v).apply()

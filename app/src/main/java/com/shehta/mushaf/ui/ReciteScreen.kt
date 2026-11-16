@@ -47,6 +47,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -96,6 +97,7 @@ private class RecitationListener(
     private var active = false
     private var continuous = false
     private var failures = 0
+    private var paused = false
     private var muted = false
     private val streams = intArrayOf(android.media.AudioManager.STREAM_MUSIC, android.media.AudioManager.STREAM_NOTIFICATION,
         android.media.AudioManager.STREAM_SYSTEM)
@@ -129,16 +131,18 @@ private class RecitationListener(
         override fun onBufferReceived(buffer: ByteArray?) {}
         override fun onEndOfSpeech() {}
         override fun onEvent(eventType: Int, params: Bundle?) {}
-        override fun onPartialResults(partialResults: Bundle?) { onWords(tokens(partialResults), false) }
-        override fun onSegmentResults(segmentResults: Bundle) { failures = 0; onWords(tokens(segmentResults), true) }
-        override fun onEndOfSegmentedSession() { if (active) restart(300) }
+        override fun onPartialResults(partialResults: Bundle?) { if (!paused) onWords(tokens(partialResults), false) }
+        override fun onSegmentResults(segmentResults: Bundle) { if (!paused) { failures = 0; onWords(tokens(segmentResults), true) } }
+        override fun onEndOfSegmentedSession() { if (active && !paused) restart(300) }
         override fun onResults(results: Bundle?) {
+            if (paused) return
             val t = tokens(results)
             if (t.isNotEmpty()) failures = 0
             onWords(t, true)
             restart(250)
         }
         override fun onError(error: Int) {
+            if (paused) return
             onWords(emptyList(), true)
             when (error) {
                 SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> { stop(); onStatus(false, "اسمح للتطبيق باستخدام الميكروفون.") }
@@ -187,7 +191,7 @@ private class RecitationListener(
     }
 
     private fun restart(delayMs: Long) {
-        if (!active) return
+        if (!active || paused) return
         handler.removeCallbacksAndMessages(null)
         handler.postDelayed({ if (active) try { sr?.startListening(intent(continuous)) } catch (e: Exception) { recreate() } }, delayMs)
     }
@@ -212,6 +216,22 @@ private class RecitationListener(
         if (wasMuted && active) handler.postDelayed({ if (active && !continuous) mute(true) }, 2500)
     }
 
+    /** Stops listening for a moment (the app is speaking a correction) without ending the session. */
+    fun pause() {
+        if (!active) return
+        paused = true
+        handler.removeCallbacksAndMessages(null)
+        try { sr?.cancel() } catch (e: Exception) { }
+        mute(false)
+    }
+
+    fun resume() {
+        if (!active || !paused) return
+        paused = false
+        if (!continuous) mute(true)
+        restart(60)
+    }
+
     /** Android 13+: asks the system to download the Arabic on-device model. */
     fun downloadModel() {
         if (Build.VERSION.SDK_INT >= 33) try {
@@ -223,12 +243,68 @@ private class RecitationListener(
     }
 
     fun stop() {
-        active = false
+        active = false; paused = false
         handler.removeCallbacksAndMessages(null)
         try { sr?.cancel(); sr?.destroy() } catch (e: Exception) { }
         sr = null
         mute(false)
         onStatus(false, null)
+    }
+}
+
+/** Speaks a correction: a short word by the phone's Arabic voice (if it has one), then the Mushaf word by the reciter. */
+private class ReciteVoice(context: Context) {
+    @Volatile private var ttsOk = false
+    private var tts: android.speech.tts.TextToSpeech? = null
+    private var player: android.media.MediaPlayer? = null
+
+    init {
+        try {
+            tts = android.speech.tts.TextToSpeech(context.applicationContext) { st ->
+                if (st == android.speech.tts.TextToSpeech.SUCCESS) try {
+                    ttsOk = (tts?.setLanguage(java.util.Locale("ar")) ?: -2) >= android.speech.tts.TextToSpeech.LANG_AVAILABLE
+                } catch (e: Exception) { }
+            }
+        } catch (e: Exception) { }
+    }
+
+    suspend fun say(text: String) {
+        val t = tts ?: return
+        if (!ttsOk) return
+        kotlinx.coroutines.withTimeoutOrNull(3000) {
+            kotlinx.coroutines.suspendCancellableCoroutine<Unit> { cont ->
+                val id = "fix" + System.nanoTime()
+                fun done() { if (cont.isActive) cont.resumeWith(Result.success(Unit)) }
+                t.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
+                    override fun onStart(utteranceId: String?) {}
+                    override fun onDone(utteranceId: String?) { if (utteranceId == id) done() }
+                    @Deprecated("Deprecated in Java") override fun onError(utteranceId: String?) { done() }
+                })
+                if (t.speak(text, android.speech.tts.TextToSpeech.QUEUE_FLUSH, null, id) != android.speech.tts.TextToSpeech.SUCCESS) done()
+            }
+        }
+    }
+
+    /** The word in the reciter's voice (word-by-word recordings, needs the internet); returns when it has finished. */
+    suspend fun playWord(s: Int, a: Int, w: Int) {
+        kotlinx.coroutines.withTimeoutOrNull(5000) {
+            kotlinx.coroutines.suspendCancellableCoroutine<Unit> { cont ->
+                val url = String.format(java.util.Locale.US, "https://audio.qurancdn.com/wbw/%03d_%03d_%03d.mp3", s, a, w)
+                val mp = android.media.MediaPlayer()
+                player = mp
+                fun done() { try { mp.release() } catch (e: Exception) { }; if (player === mp) player = null; if (cont.isActive) cont.resumeWith(Result.success(Unit)) }
+                mp.setOnPreparedListener { it.start() }
+                mp.setOnCompletionListener { done() }
+                mp.setOnErrorListener { _, _, _ -> done(); true }
+                cont.invokeOnCancellation { try { mp.release() } catch (e: Exception) { } }
+                try { mp.setDataSource(url); mp.prepareAsync() } catch (e: Exception) { done() }
+            }
+        }
+    }
+
+    fun release() {
+        try { player?.release() } catch (e: Exception) { }
+        try { tts?.shutdown() } catch (e: Exception) { }
     }
 }
 
@@ -268,8 +344,10 @@ fun ReciteScreen(c: MushafColors, prefs: Prefs, currentPage: Int, review: Boolea
     val plan = remember { ReviewPlan(context) }
     var session by remember { mutableStateOf<Triple<ReciteRange, Int, Float>?>(null) }   // range, mode, threshold
     val s = session
+    val sp = remember { context.getSharedPreferences("recite", Context.MODE_PRIVATE) }
     if (s == null) ReciteSetup(c, plan, currentPage, review, onBack, onStart = { r, m, th -> session = Triple(r, m, th) })
-    else ReciteSession(c, prefs, plan, s.first, s.second, s.third, onBack = { session = null })
+    else ReciteSession(c, prefs, plan, s.first, s.second, s.third,
+        voice = s.second != MODE_FREE && sp.getBoolean("voiceFix", false), onBack = { session = null })
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -288,6 +366,8 @@ private fun ReciteSetup(c: MushafColors, plan: ReviewPlan, currentPage: Int, rev
     var picking by remember { mutableStateOf(false) }
     var mode by remember { mutableIntStateOf(MODE_PROMPT) }
     var strict by remember { mutableIntStateOf(1) }
+    val sp = remember { context.getSharedPreferences("recite", Context.MODE_PRIVATE) }
+    var voice by remember { mutableStateOf(sp.getBoolean("voiceFix", false)) }
     var error by remember { mutableStateOf<String?>(null) }
     val available = remember { SpeechRecognizer.isRecognitionAvailable(context) }
 
@@ -377,6 +457,15 @@ private fun ReciteSetup(c: MushafColors, plan: ReviewPlan, currentPage: Int, rev
                 MODE_TEST -> "يختار التطبيق آية من اختيارك ويقول لك «أكمل من هنا» لثلاث آيات."
                 else -> "تظهر كل كلمة صحيحة في مكانها، ويُنبّهك عند الخطأ، ويلقّنك إن توقفت."
             }, fontSize = 13.sp, color = c.muted)
+            if (mode != MODE_FREE) Row(Modifier.fillMaxWidth().clickable { voice = !voice; sp.edit().putBoolean("voiceFix", voice).apply() },
+                verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("التصحيح بالصوت", fontWeight = FontWeight.SemiBold)
+                    Text("عند الخطأ أو النسيان يتوقف التطبيق لحظة ويُسمعك الصواب بصوت القارئ، ثم يكمل الاستماع إليك (يحتاج إنترنت لصوت الكلمات).",
+                        fontSize = 12.sp, color = c.muted)
+                }
+                Switch(voice, { voice = it; sp.edit().putBoolean("voiceFix", it).apply() })
+            }
             Text("الدقة", fontWeight = FontWeight.SemiBold)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf("متساهل", "عادي", "دقيق").forEachIndexed { i, n -> FilterChip(strict == i, { strict = i }, { Text(n) }) }
@@ -430,7 +519,8 @@ private fun SurahPicker(c: MushafColors, onPick: (Int) -> Unit, onDismiss: () ->
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ReciteSession(c: MushafColors, prefs: Prefs, plan: ReviewPlan, range: ReciteRange, mode: Int, threshold: Float, onBack: () -> Unit) {
+private fun ReciteSession(c: MushafColors, prefs: Prefs, plan: ReviewPlan, range: ReciteRange, mode: Int, threshold: Float,
+                          voice: Boolean, onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     // test mode: start at a random ayah (not the first) and recite three ayahs from it
@@ -462,13 +552,32 @@ private fun ReciteSession(c: MushafColors, prefs: Prefs, plan: ReviewPlan, range
         } catch (e: Exception) { }
     }
 
+    var correcting by remember { mutableStateOf(false) }
+    val speaker = remember { ReciteVoice(context) }
+    val listenerRef = remember { arrayOfNulls<RecitationListener>(1) }
+    /** Voice correction: stop listening, say the right word(s) in the reciter's voice, then listen again. */
+    fun correct(bad: List<Int>) {
+        correcting = true
+        listenerRef[0]?.pause()
+        matcher.resumeAfterCorrection()
+        scope.launch {
+            val idx = bad.sorted().take(8)
+            val skipped = idx.all { matcher.state[it] == WordState.SKIPPED }
+            hint = (if (skipped) "نسيتَ: " else "الصواب: ") + idx.joinToString(" ") { words[it].text }
+            speaker.say(if (skipped) "نسيت" else "الصواب")
+            for (i in idx) speaker.playWord(words[i].s, words[i].a, words[i].w)
+            delay(250)
+            correcting = false
+            if (!finished) listenerRef[0]?.resume()
+        }
+    }
     val listener = remember {
         RecitationListener(context,
             onWords = { tokens, final ->
-                if (!finished && (tokens.isNotEmpty() || final)) {
+                if (!finished && !correcting && (tokens.isNotEmpty() || final)) {
                     val before = matcher.pos
                     val bad = matcher.onResult(tokens, final)
-                    if (bad.isNotEmpty()) { said.putAll(matcher.said); buzz() }
+                    if (bad.isNotEmpty()) { said.putAll(matcher.said); buzz(); if (voice) correct(bad) }
                     if (tokens.isNotEmpty()) { heard = tokens.joinToString(" "); activity++ }
                     if (matcher.pos != before || bad.isNotEmpty()) hint = ""
                     tick++
@@ -477,7 +586,8 @@ private fun ReciteSession(c: MushafColors, prefs: Prefs, plan: ReviewPlan, range
             },
             onStatus = { l, err -> listening = l; if (err != null) status = err })
     }
-    DisposableEffect(Unit) { onDispose { listener.stop() } }
+    listenerRef[0] = listener
+    DisposableEffect(Unit) { onDispose { listener.stop(); speaker.release() } }
     LaunchedEffect(finished) {
         if (finished) {
             listener.stop()
@@ -499,16 +609,23 @@ private fun ReciteSession(c: MushafColors, prefs: Prefs, plan: ReviewPlan, range
     LaunchedEffect(activity, matcher.pos, listening, finished) {
         if (!listening || finished || mode == MODE_FREE || activity == 0) return@LaunchedEffect
         delay(6000)
+        while (correcting) delay(500)
         if (matcher.done) return@LaunchedEffect
         val w = words[matcher.pos]
         val plain = ReciteText.norm(w.text)
         hint = "تلميح: «${plain.take(2)}…»"
         delay(5000)
-        if (matcher.done) return@LaunchedEffect
+        if (matcher.done || correcting) return@LaunchedEffect
         matcher.giveCurrent(); tick++
         hint = "الكلمة: ${w.text}"
-        listener.withSound { AudioEngine.playWord(w.s, w.a, w.w) { } }
-        if (matcher.done) finished = true
+        if (matcher.done) { finished = true; return@LaunchedEffect }
+        // the recogniser must not hear the prompt as if the reciter said it: pause, play, listen again
+        // (in its own coroutine: this effect restarts as soon as the position changes)
+        correcting = true
+        listener.pause(); matcher.resumeAfterCorrection()
+        scope.launch {
+            try { speaker.playWord(w.s, w.a, w.w); delay(200) } finally { correcting = false; if (!finished) listener.resume() }
+        }
     }
 
     val listState = rememberLazyListState()

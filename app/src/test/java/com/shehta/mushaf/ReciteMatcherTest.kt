@@ -108,4 +108,13 @@ class ReciteMatcherTest {
         say(m, "يا ايها الناس")
         assertTrue(m.done); assertTrue(m.mistakes.isEmpty())
     }
+
+    @Test fun voiceCorrectionThenReReading() {
+        val m = ReciteMatcher(tariq)
+        val bad = m.onResult("والسماء والطارق وما اعلمك ما الطارق".split(" "), false)
+        assertEquals(listOf(3), bad)
+        m.resumeAfterCorrection()                    // the app said the right word; the recogniser starts again
+        m.onResult("وما ادراك ما الطارق النجم الثاقب ان كل".split(" "), true); m.finish()
+        assertEquals(10, m.pos); assertEquals(listOf(3), m.mistakes); assertEquals(WordState.WRONG, m.state[3])
+    }
 }

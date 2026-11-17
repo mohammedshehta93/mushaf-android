@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- open book -->
+    <path android:fillColor="#E9C46A"
+        android:pathData="M54,40 C46,35 36,34 28,36 L28,72 C36,70 46,71 54,76 Z"/>
+    <path android:fillColor="#F4DFA8"
+        android:pathData="M54,40 C62,35 72,34 80,36 L80,72 C72,70 62,71 54,76 Z"/>
+    <path android:strokeColor="#0F4C3A" android:strokeWidth="1.6" android:fillColor="#00000000"
+        android:pathData="M33,46 C39,44.5 45,45 50,47 M33,53 C39,51.5 45,52 50,54 M33,60 C39,58.5 45,59 50,61 M58,47 C63,45 69,44.5 75,46 M58,54 C63,52 69,51.5 75,53 M58,61 C63,59 69,58.5 75,60"/>
+    <group android:pivotX="54" android:pivotY="33" android:scaleX="0.72" android:scaleY="0.72" android:translateY="-5">
+    <!-- eight-point star above -->
+        <path android:fillColor="#E9C46A"
+            android:pathData="M54,22 L56.3,27.4 L61.8,25.6 L60,31 L65.4,33.3 L60,35.6 L61.8,41 L56.3,39.2 L54,44.6 L51.7,39.2 L46.2,41 L48,35.6 L42.6,33.3 L48,31 L46.2,25.6 L51.7,27.4 Z"
+            android:strokeColor="#0F4C3A" android:strokeWidth="0"/>
+    </group>
+</vector>

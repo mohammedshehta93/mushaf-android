@@ -61,6 +61,14 @@ def main():
     from fontTools.ttLib import TTFont
     for src, dst in ((f"{D}/fonts2/bsml.ttf", "bsml.woff2"), (f"{D}/fonts2/hafs_v22.ttf", "hafs.woff2")):
         f = TTFont(src); f.flavor = "woff2"; f.save(f"{fonts}/{dst}")
+    # fingerprint of the fonts for the service worker (a cached font is replaced only when the fonts change)
+    import hashlib
+    hsh = hashlib.sha256()
+    for n in range(1, 605): hsh.update(open(f"{D}/fonts2/p{n:03d}.woff2", "rb").read())
+    for src in (f"{D}/fonts2/bsml.ttf", f"{D}/fonts2/hafs_v22.ttf"): hsh.update(open(src, "rb").read())
+    sw = os.path.join(OUT, "sw.js")
+    txt = open(sw, encoding="utf-8").read()
+    open(sw, "w", encoding="utf-8").write(txt.replace("__FONTS__", hsh.hexdigest()[:16]))
 
     # files for "download the Mushaf for offline use" (tafsir stays on-demand)
     offline = ["data/reading.json", "data/learn/library.json", "data/learn/tajweed.json", "data/gharib.json", "data/text.json", "data/muslim/azkar.json", "data/muslim/hadith_daily.json", "data/muslim/names.json", "data/similar.json", "data/surahs_info.json"]

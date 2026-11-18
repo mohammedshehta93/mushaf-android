@@ -403,11 +403,28 @@ private fun DrawScope.drawPage(
     }
 }
 
+/**
+ * Word glyphs are drawn as outlines (paths), not through the GPU text cache: with 604 page fonts some phones mixed up
+ * cached glyphs and drew broken pieces of other words. The outline of each word is computed once and kept.
+ */
+private object GlyphPaths {
+    val cache = android.util.LruCache<String, android.graphics.Path>(3000)
+    fun of(glyph: String, paint: Paint): android.graphics.Path {
+        val key = "${System.identityHashCode(paint.typeface)}|${paint.textSize}|$glyph"
+        cache.get(key)?.let { return it }
+        val path = android.graphics.Path()
+        paint.getTextPath(glyph, 0, glyph.length, 0f, 0f, path)
+        cache.put(key, path)
+        return path
+    }
+}
+
 private fun drawGlyph(canvas: android.graphics.Canvas, g: Placed, paint: Paint) {
-    if (g.sx == 1f) { canvas.drawText(g.tok.glyph, g.drawX, g.baseline, paint); return }
+    val path = GlyphPaths.of(g.tok.glyph, paint)
     canvas.save()
-    canvas.scale(g.sx, 1f, g.drawX, g.baseline)
-    canvas.drawText(g.tok.glyph, g.drawX, g.baseline, paint)
+    canvas.translate(g.drawX, g.baseline)
+    if (g.sx != 1f) canvas.scale(g.sx, 1f)
+    canvas.drawPath(path, paint)
     canvas.restore()
 }
 

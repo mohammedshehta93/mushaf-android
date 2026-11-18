@@ -2,6 +2,7 @@ package com.shehta.mushaf.ui
 
 import android.content.Context
 import androidx.compose.animation.AnimatedVisibility
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -178,25 +179,54 @@ fun VirtuesScreen(c: MushafColors, onBack: () -> Unit, onGo: (Int, Int) -> Unit,
 
 @Composable
 fun HadithLibraryScreen(c: MushafColors, onBack: () -> Unit) {
-    var q by rememberSaveable { mutableStateOf("") }
     val all = remember { MuslimData.explained() }
-    val norm = remember(all) { all.map { ArabicText.normalize(it.title + " " + it.text) } }
-    val shown = remember(q, all) {
-        val nq = ArabicText.normalize(q)
-        if (nq.length < 2) all.indices.toList() else all.indices.filter { norm[it].contains(nq) }
-    }
-    ScreenScaffold("أحاديث مشروحة", c, onBack, subtitle = if (all.isEmpty()) null else "${all.size.ar()} حديثًا صحيحًا أو حسنًا مع الشرح والفوائد") {
-        if (all.isEmpty()) {
+    val (src, groups) = MuslimData.library
+    var group by rememberSaveable { mutableStateOf(-1) }        // -1 = the list of collections
+    var q by rememberSaveable { mutableStateOf("") }
+    if (all.isEmpty() || groups.isEmpty()) {
+        ScreenScaffold("الأحاديث المشروحة", c, onBack) {
             Centered { Text("الأحاديث المشروحة غير متوفرة في هذه النسخة.", color = c.muted, modifier = Modifier.padding(24.dp)) }
-            return@ScreenScaffold
         }
+        return
+    }
+    val g = groups.getOrNull(group)
+    if (g == null) {
+        ScreenScaffold("الأحاديث المشروحة", c, onBack, subtitle = "كل حديث صحيح أو حسن، ومعه شرحه وفوائده") {
+            LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(groups.size) { i ->
+                    val x = groups[i]
+                    Card2(c, Modifier.clickable { group = i; q = "" }) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(x.title, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = c.gharib, modifier = Modifier.weight(1f))
+                            Text("${x.items.size.ar()} حديثًا ›", fontSize = 13.sp, color = c.muted)
+                        }
+                        if (x.desc.isNotEmpty()) Text(x.desc, fontSize = 14.sp, color = c.muted)
+                    }
+                }
+                item { Text("المصدر: $src", fontSize = 12.sp, color = c.muted, modifier = Modifier.padding(4.dp)) }
+            }
+        }
+        return
+    }
+    BackHandler { group = -1 }
+    val norm = remember(g) { g.items.map { ArabicText.normalize(all[it].title + " " + all[it].text) } }
+    val shown = remember(q, g) {
+        val nq = ArabicText.normalize(q)
+        if (nq.length < 2) g.items.indices.toList() else g.items.indices.filter { norm[it].contains(nq) }
+    }
+    ScreenScaffold(g.title, c, onBack = { group = -1 }, subtitle = "${g.items.size.ar()} حديثًا مع الشرح") {
         LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth(), singleLine = true,
                     placeholder = { Text("ابحث بكلمة من الحديث") }, leadingIcon = { Icon(Icons.Filled.Search, null) })
-                Text("المصدر: «موسوعة الأحاديث النبوية» hadeethenc.com — بإشراف متخصصين.", fontSize = 12.sp, color = c.muted, modifier = Modifier.padding(top = 4.dp))
             }
-            items(shown.take(300)) { i -> Card2(c) { HadithBody(c, all[i], 16) } }
+            items(shown.take(400)) { k ->
+                val h = all[g.items[k]]
+                Card2(c) {
+                    g.nums.getOrNull(k)?.let { Text("الحديث ${it.ar()}", fontSize = 12.sp, color = c.muted) }
+                    HadithBody(c, h, 16)
+                }
+            }
         }
     }
 }

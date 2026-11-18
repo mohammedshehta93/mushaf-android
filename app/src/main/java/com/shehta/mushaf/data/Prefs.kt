@@ -50,6 +50,9 @@ class Prefs(context: Context) {
     var showPageNumber by mutableStateOf(sp.getBoolean("pageNo", true)); private set
     var twoPagesLandscape by mutableStateOf(sp.getBoolean("twoPages", true)); private set
     var tafsirSource by mutableStateOf((sp.getString("tafsirSrc", "ibnkathir") ?: "ibnkathir").let { if (it == "saadi") "saadi2" else it }); private set
+    /** Open on the home of «تِبيان» (the Mushaf is one of its parts); false = open straight on the Mushaf. */
+    var homeFirst by mutableStateOf(sp.getBoolean("homeFirst", true)); private set
+    fun updateHomeFirst(v: Boolean) { homeFirst = v; sp.edit().putBoolean("homeFirst", v).apply() }
     var lastUpdateCheck: Long
         get() = sp.getLong("updCheck", 0)
         set(v) = sp.edit().putLong("updCheck", v).apply()

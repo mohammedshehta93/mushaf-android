@@ -1,5 +1,9 @@
 package com.shehta.mushaf.ui
 
+import androidx.compose.foundation.layout.width
+
+import androidx.compose.foundation.layout.Spacer
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,17 +35,18 @@ import androidx.compose.ui.unit.sp
 fun ScreenScaffold(
     title: String,
     c: MushafColors,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,          // null on the home screen (the root): no back arrow
     subtitle: String? = null,
     actions: @Composable RowScope.() -> Unit = {},
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    BackHandler(onBack = onBack)
+    if (onBack != null) BackHandler(onBack = onBack)
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.fillMaxSize()) {
             Surface(color = c.bar, contentColor = c.onBar) {
                 Row(Modifier.fillMaxWidth().statusBarsPadding().padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "رجوع") }
+                    if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "رجوع") }
+                    else Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
                         Text(title, fontWeight = FontWeight.Bold, fontSize = 19.sp)
                         if (subtitle != null) Text(subtitle, fontSize = 12.sp, color = c.onBar.copy(alpha = 0.8f))

@@ -100,6 +100,8 @@ fun SettingsSheet(prefs: Prefs, mp: MuslimPrefs, onDismiss: () -> Unit) {
             Label("الأذكار")
             Toggle("إخفاء الذِّكر بعد إتمام عدده (يرجع كل يوم)", mp.azkarHideDone) { mp.updateAzkarHideDone(it) }
 
+            Toggle("فتح التطبيق على الصفحة الرئيسية (وإلا يفتح على المصحف مباشرة)", prefs.homeFirst) { prefs.updateHomeFirst(it) }
+
             Label("طريقة العرض")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(selected = prefs.mode == ViewMode.PAGE, onClick = { prefs.updateMode(ViewMode.PAGE) }, label = { Text("صفحة المصحف كاملة") })

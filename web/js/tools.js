@@ -66,7 +66,7 @@ const HOME_SECTIONS = [
   ['القرآن الكريم', [['index', '☰', 'فهرس المصحف'], ['virtues', '💚', 'فضل القرآن'], ['surahinfo', '📖', 'مقاصد السور وأسباب النزول'], ['search', '🔍', 'البحث في القرآن'], ['tajweed', '🗣', 'تعلّم التجويد'], ['notebook', '📝', 'دفتر التدبّر'], ['marks', '🔖', 'العلامات']]],
   ['الصلاة والعبادات اليومية', [['prayer', '🕰', 'مواقيت الصلاة'], ['qibla', '🧭', 'القبلة'], ['azkar', '📿', 'الأذكار'], ['tasbih', '👆', 'السبحة'],
     ['hijri', '🗓', 'التقويم الهجري'], ['ramadan', '🌙', 'رمضان'], ['zakat', '🧮', 'الزكاة']]],
-  ['طلب العلم', [['sheikhs', '🎓', 'الشيوخ والدروس'], ['poems', '📜', 'المتون والمنظومات'], ['hadiths', '❝', 'أحاديث مشروحة'], ['hadithcheck', '✔', 'تحقّق من حديث'], ['names', '✨', 'أسماء الله الحسنى']]],
+  ['طلب العلم', [['sheikhs', '🎓', 'الشيوخ والدروس'], ['poems', '📜', 'المتون والمنظومات'], ['hadiths', '❝', 'الأحاديث المشروحة'], ['hadithcheck', '✔', 'تحقّق من حديث'], ['names', '✨', 'أسماء الله الحسنى']]],
   ['English', [['english', '🌍', 'English corner']]],
   ['استمع', [['radio', '📻', 'إذاعات القرآن'], ['nasheed', '🎧', 'قصائد ومتون صوتية']]],
   ['التطبيق', [['settings', '⚙', 'الإعدادات'], ['share', '↗', 'شارك التطبيق']]],
@@ -74,7 +74,7 @@ const HOME_SECTIONS = [
 
 export function openHome() {
   ui.screen({
-    title: 'المسلم', sub: `${hijriText(hijri())} · ${new Date().toLocaleDateString('ar', { weekday: 'long', day: 'numeric', month: 'long' })}`,
+    title: 'تِبيان', sub: `${hijriText(hijri())} · ${new Date().toLocaleDateString('ar', { weekday: 'long', day: 'numeric', month: 'long' })}`,
     async render(body) {
       const n = nextPrayer(), t = times();
       const now = new Date(), h = now.getHours() + now.getMinutes() / 60;
@@ -82,7 +82,11 @@ export function openHome() {
       if (t && h >= t[3] && h < t[5] + 1) az = ['أذكار المساء', '🌙'];
       else if (t && (h >= t[5] + 1 || h < t[0])) az = ['أذكار النوم', '🌙'];
       const friday = now.getDay() === 5;
+      const lp = app.current(), [ls] = app.meta().pageRanges[lp - 1];
       body.innerHTML = `
+        <button class="card row" style="width:100%" data-go="mushaf"><span style="font-size:26px">📖</span>
+          <span class="grow" style="text-align:right"><b style="font-size:20px">المصحف</b><br><span class="muted">تابع القراءة: سورة ${esc(app.meta().surahs[ls - 1].name)} · صفحة ${ar(lp)}</span></span>
+          <span style="color:var(--gharib)">اقرأ ›</span></button>
         <button class="card" style="display:block;width:100%;text-align:right" data-go="prayer">
           ${n ? `<div style="font-size:20px;font-weight:700;color:var(--gharib)">${NAMES[n.i]} بعد ${countdown(n.at - Date.now())}</div>
             <div class="muted">${esc(loc().name)}</div>
@@ -111,7 +115,7 @@ export function openHome() {
         ({
           prayer: () => openPrayer(), qibla: openQibla, azkar: () => openAzkar(), tasbih: openTasbih, hijri: openHijri,
           ramadan: openRamadan, names: openNames, zakat: openZakat, radio: () => openRadio(0), nasheed: () => openRadio(1),
-          sheikhs: openSheikhs, poems: openPoems, tajweed: openTajweed, virtues: openVirtues, hadiths: openHadithLibrary, hadithcheck: openHadithCheck, surahinfo: () => openSurahInfo(), notebook: openNotebook, english: openEnglish, settings: app.openSettings, tafsir: () => app.openTafsir?.(), index: () => app.openIndex(), search: app.openSearch,
+          sheikhs: openSheikhs, poems: openPoems, tajweed: openTajweed, virtues: openVirtues, hadiths: openHadithLibrary, hadithcheck: openHadithCheck, surahinfo: () => openSurahInfo(), notebook: openNotebook, mushaf: () => app.goTo(app.current()), english: openEnglish, settings: app.openSettings, tafsir: () => app.openTafsir?.(), index: () => app.openIndex(), search: app.openSearch,
           marks: () => app.openIndex('marks'), share: app.shareApp,
         })[g.dataset.go]?.();
       };
@@ -504,17 +508,17 @@ const choice = (title, sub, rows) => ui.sheet(`<div style="font-weight:700;font-
 async function openSheikhs() {
   const lib = await library();
   ui.screen({
-    title: 'الشيوخ والدروس', sub: 'دروس منظّمة، مواعظ، ومقاطع قصيرة',
+    title: 'الشيوخ والدروس', sub: 'دروس صوتية، ومعها الفيديو على يوتيوب',
     render(body) {
-      body.innerHTML = `<p class="muted">اختر الشيخ ثم نوع المحتوى. تُفتح على يوتيوب، والبحث في المواعظ والمقاطع القصيرة مقيّد بـ«بدون موسيقى».</p>
+      body.innerHTML = `<p class="muted">اختر الشيخ لتسمع دروسه صوتًا أو تشاهدها فيديو على يوتيوب. البحث في المواعظ والمقاطع القصيرة مقيّد بـ«بدون موسيقى».</p>
         ${lib.sheikhGroups.map((g) => `<div class="sec-title">${esc(g.title)}</div>${g.items.map((x) => `<button class="card" style="display:block;width:100%;text-align:right" data-q="${esc(x.q)}" data-n="${esc(x.n)}"><b>${esc(x.n)}</b><div class="muted">${esc(x.d || '')}</div></button>`).join('')}`).join('')}`;
       body.onclick = (e) => {
         const b = e.target.closest('[data-q]'); if (!b) return; const q = b.dataset.q;
         choice(b.dataset.n, '', [
-          ['📚', 'دروس وسلاسل منظّمة', 'قوائم تشغيل مرتبة (شرح كتاب أو سلسلة كاملة)', yt(q, 'EgIQAw%3D%3D')],
-          ['🎙', 'محاضرات ومواعظ', 'خطب ودروس منفردة', yt(noMusic(`${q} محاضرة`))],
+          ['🎧', 'استمع لدروسه (صوت)', 'دروسه الصوتية في Apple Podcasts', `https://podcasts.apple.com/search?term=${encodeURIComponent(q)}`],
+          ['📚', 'دروس وسلاسل منظّمة (فيديو)', 'قوائم تشغيل مرتبة (شرح كتاب أو سلسلة كاملة)', yt(q, 'EgIQAw%3D%3D')],
+          ['🎙', 'محاضرات ومواعظ (فيديو)', 'خطب ودروس منفردة', yt(noMusic(`${q} محاضرة`))],
           ['📱', 'مقاطع قصيرة', 'Shorts — بدون موسيقى', yt(noMusic(`${q} #shorts`))],
-          ['🎧', 'بودكاست', 'في دليل Apple Podcasts', `https://podcasts.apple.com/search?term=${encodeURIComponent(q)}`],
           ['▶️', 'القناة على يوتيوب', 'ابحث عن القناة الرسمية واشترك فيها', yt(q, 'EgIQAg%3D%3D')],
         ]);
       };

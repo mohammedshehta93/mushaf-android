@@ -137,7 +137,7 @@ function onPageChange(n) {
 
 export function goTo(n, sel = null) {
   n = Math.max(1, Math.min(PAGES, n));
-  ui.closeScreen(); ui.closeSheet();
+  ui.closeAllScreens(); ui.closeSheet();
   selection = sel;
   setTimeout(startReading, 400);
   renderPage(pageEl(n), n);
@@ -432,6 +432,7 @@ function openSettings() {
     <div class="chips">${FONT_NAMES.map((n, i) => `<button class="chip ${store.get('fontStep2', 0) === i ? 'on' : ''}" data-fs="${i}">${n}</button>`).join('')}</div>
     ${intentionOptionsHtml()}
     ${tadabburOptionsHtml()}
+    <button class="item" data-t="homeFirst"><span class="ic">${store.get('homeFirst', true) ? '☑' : '☐'}</span>فتح التطبيق على الصفحة الرئيسية (وإلا يفتح على المصحف)</button>
     <button class="item" data-t="colored"><span class="ic">${store.get('colored', true) ? '☑' : '☐'}</span>تلوين الكلمات الغريبة (اضغط عليها لمعرفة المعنى)</button>
     <button class="item" data-t="follow"><span class="ic">${store.get('follow', true) ? '☑' : '☐'}</span>تقليب الصفحات مع التلاوة</button>
     <button class="item" data-a="offline"><span class="ic">⬇</span><span class="grow">تنزيل المصحف للاستخدام بدون إنترنت<br><span class="muted" data-off>${store.get('offline') ? 'تم التنزيل ✓' : 'حوالي ٢٥ ميجا'}</span></span></button>
@@ -562,6 +563,7 @@ export const app = { pageOf: (s, a) => pageOf(s, a), repeatAyah: (s, a, times, g
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => {});
   checkUpdate();
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkUpdate(); });
+  if (store.get('homeFirst', true)) openHome();          // تِبيان opens on its home; the Mushaf is one of its parts
   whatsNew(document.querySelector('meta[name=app-version]')?.content || 'dev');
   setTimeout(() => { if ($('#sheet').classList.contains('hidden')) showInstall(); }, 2500);
 })();

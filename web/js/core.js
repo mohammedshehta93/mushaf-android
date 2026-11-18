@@ -53,10 +53,42 @@ let ignorePops = 0;
 window.addEventListener('popstate', () => {
   if (ignorePops > 0) { ignorePops--; return; }
   const k = stack.pop();
-  if (k === 'sheet') hideSheet(); else if (k === 'screen') hideScreen();
+  if (k === 'sheet') hideSheet(); else if (k === 'screen') screenBack();
 });
 function hideSheet() { $('#sheet').classList.add('hidden'); $('#scrim').classList.add('hidden'); $('#sheet').innerHTML = ''; ui.onSheetClose?.(); ui.onSheetClose = null; }
-function hideScreen() { $('#screen').classList.add('hidden'); $('#screen').innerHTML = ''; ui.onScreenClose?.(); ui.onScreenClose = null; }
+const screens = [];   // the pages under the open one: {opts, tab, scroll}
+let current = null;   // the open page: {opts, tab}
+function showScreen(opts, tab, scroll) {
+  const { title, sub = '', tabs = null, render, actions = '' } = opts;
+  const sc = $('#screen');
+  sc.innerHTML = `<div class="scr-head"><button class="icon" data-close aria-label="رجوع">→</button>
+    <div class="grow"><h1>${esc(title)}</h1>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div>${actions}</div>
+    ${tabs ? `<div class="tabs">${tabs.map((t) => `<button data-tab="${t.id}">${esc(t.label)}</button>`).join('')}</div>` : ''}
+    <div class="scr-body"></div>`;
+  sc.classList.remove('hidden');
+  const body = $('.scr-body', sc);
+  current = { opts, tab: null };
+  $('[data-close]', sc).onclick = () => ui.closeScreen();
+  const show = (id) => {
+    current.tab = id;
+    $$('.tabs button', sc).forEach((b) => b.classList.toggle('on', b.dataset.tab === id));
+    body.innerHTML = ''; body.scrollTop = 0; render(body, id);
+  };
+  if (tabs) $$('.tabs button', sc).forEach((b) => (b.onclick = () => show(b.dataset.tab)));
+  show(tab || (tabs ? tabs[0].id : null));
+  if (scroll) {                      // the page may fill itself asynchronously: restore the position when it has
+    const restore = () => { body.scrollTop = scroll; };
+    restore(); setTimeout(restore, 60); setTimeout(restore, 300);
+  }
+}
+/** Show the page this one was opened from (its history entry is already gone). */
+function screenBack() {
+  const prev = screens.pop();
+  if (!prev) return hideScreen();
+  ui.onScreenClose?.(); ui.onScreenClose = null;
+  showScreen(prev.opts, prev.tab, prev.scroll);
+}
+function hideScreen() { current = null; screens.length = 0; $('#screen').classList.add('hidden'); $('#screen').innerHTML = ''; ui.onScreenClose?.(); ui.onScreenClose = null; }
 
 /** Close now (synchronously), then drop its history entry without reacting to that popstate. */
 function closeLayer(kind, hide) {
@@ -75,27 +107,30 @@ export const ui = {
     return sh;
   },
   closeSheet() { closeLayer('sheet', hideSheet); },
-  /** A full-screen page. tabs: [{id,label}], render(body, tabId) fills the body. */
-  screen({ title, sub = '', tabs = null, tab = null, render, actions = '' }) {
+  /**
+   * A full-screen page. tabs: [{id,label}], render(body, tabId) fills the body.
+   * Opening a page from another one remembers where the reader was: «back» returns to that page, on the same tab and
+   * at the same scroll position. Re-opening the page with the same title (a refresh, the next tafsir page) replaces it.
+   */
+  screen(opts) {
     const sc = $('#screen');
-    const wasOpen = !sc.classList.contains('hidden');
-    sc.innerHTML = `<div class="scr-head"><button class="icon" data-close aria-label="رجوع">→</button>
-      <div class="grow"><h1>${esc(title)}</h1>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div>${actions}</div>
-      ${tabs ? `<div class="tabs">${tabs.map((t) => `<button data-tab="${t.id}">${esc(t.label)}</button>`).join('')}</div>` : ''}
-      <div class="scr-body"></div>`;
-    sc.classList.remove('hidden');
-    if (!wasOpen) push('screen');
-    const body = $('.scr-body', sc);
-    $('[data-close]', sc).onclick = () => ui.closeScreen();
-    const show = (id) => {
-      $$('.tabs button', sc).forEach((b) => b.classList.toggle('on', b.dataset.tab === id));
-      body.innerHTML = ''; body.scrollTop = 0; render(body, id);
-    };
-    if (tabs) $$('.tabs button', sc).forEach((b) => (b.onclick = () => show(b.dataset.tab)));
-    show(tab || (tabs ? tabs[0].id : null));
+    const wasOpen = !sc.classList.contains('hidden') && current;
+    if (wasOpen && !opts.replace && opts.title !== current.opts.title) {
+      screens.push({ opts: current.opts, tab: current.tab, scroll: $('.scr-body', sc)?.scrollTop || 0 });
+      push('screen');
+    } else if (!wasOpen) push('screen');
+    showScreen(opts, opts.tab || null, 0);
     return sc;
   },
-  closeScreen() { closeLayer('screen', hideScreen); },
+  /** Back one page (to the page this one was opened from), or close the pages when this is the first. */
+  closeScreen() { if (screens.length) { closeLayer('screen', screenBack); } else closeLayer('screen', hideScreen); },
+  /** Close every page (going to the Mushaf). */
+  closeAllScreens() {
+    const n = stack.filter((k) => k === 'screen').length;
+    for (let i = stack.length - 1; i >= 0; i--) if (stack[i] === 'screen') stack.splice(i, 1);
+    screens.length = 0; hideScreen();
+    if (n) { ignorePops++; history.go(-n); }
+  },
 };
 $('#scrim').addEventListener('click', () => ui.closeSheet());
 

@@ -39,6 +39,7 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -199,6 +200,7 @@ private fun PodcastRow(c: MushafColors, lp: ListenPrefs, p: Podcast, onOpen: (Po
 
 @Composable
 internal fun EpisodesList(c: MushafColors, lp: ListenPrefs, p: Podcast) {
+    val context = LocalContext.current
     var eps by remember(p.feed) { mutableStateOf<List<Episode>?>(null) }
     var error by remember(p.feed) { mutableStateOf(false) }
     LaunchedEffect(p.feed) {
@@ -230,6 +232,9 @@ internal fun EpisodesList(c: MushafColors, lp: ListenPrefs, p: Podcast) {
                         }
                     }
                     if (e.description.isNotEmpty()) Text(e.description, fontSize = 13.sp, color = c.muted, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+                    TextButton(onClick = { openUrl(context, Learn.video("${p.author.ifBlank { p.title }} ${e.title}")) }) {
+                        Icon(Icons.Filled.SmartDisplay, null, Modifier.size(18.dp)); Text("  شاهده فيديو على يوتيوب", fontSize = 13.sp)
+                    }
                 }
             }
         }

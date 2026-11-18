@@ -86,6 +86,22 @@ object MuslimData {
         } catch (e: Exception) { emptyList() }.also { explained = it }
     }
 
+    class HadithGroup(val title: String, val desc: String, val items: List<Int>, val nums: List<Int> = emptyList())
+
+    /** «الأحاديث المشروحة» arranged: the Forty, agreed upon, al-Bukhari, Muslim, others (muslim/hadith_library.json). */
+    val library: Pair<String, List<HadithGroup>> by lazy {
+        try {
+            val o = org.json.JSONObject(Quran.asset("muslim/hadith_library.json"))
+            val g = o.optJSONArray("groups") ?: JSONArray()
+            o.optString("src") to List(g.length()) { i ->
+                val x = g.getJSONObject(i); val it = x.getJSONArray("items")
+                val n = x.optJSONArray("nums")
+                HadithGroup(x.getString("title"), x.optString("desc"), List(it.length()) { k -> it.getInt(k) },
+                    if (n == null) emptyList() else List(n.length()) { k -> n.getInt(k) })
+            }
+        } catch (e: Exception) { "" to emptyList() }
+    }
+
     fun names(): List<GoodName> = names ?: synchronized(this) {
         names ?: JSONArray(Quran.asset("muslim/names.json")).let { arr ->
             List(arr.length()) { i ->

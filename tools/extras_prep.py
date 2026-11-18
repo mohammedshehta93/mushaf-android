@@ -152,6 +152,76 @@ def build_fiqh(D, OUT):
               open(f"{OUT}/fiqh/bulugh.json", "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
 
 
+SOUND_GRADES = ("صحيح", "حسن", "صحيح لغيره", "حسن لغيره")
+
+
+def finish_fiqh(D, OUT, sharh_items=None):
+    """Bulugh al-Maram as studied in the app: sahih and hasan hadiths only (the editor's grade, or — where he gave
+    none — a hadith Ibn Hajar attributes to al-Bukhari or Muslim), each with its explanation from HadeethEnc when
+    the same hadith is there. Weak, very weak, munkar, shadh and fabricated hadiths are left out."""
+    import hadith_sharh
+    path = f"{OUT}/fiqh/bulugh.json"
+    d = json.load(open(path, encoding="utf-8"))
+    idx = hadith_sharh.Index(sharh_items or [])
+    kept = dropped = explained = 0
+    for b in d["books"]:
+        out = []
+        for h in b["h"]:
+            g = h["g"]
+            if not g:
+                t = re.sub("[\u064b-\u0652]", "", h["t"])
+                if re.search(r"متفق عليه|البخاري|مسلم", t) and not re.search(r"شرط|ضعف|ضعيف", t): g = h["g"] = "صحيح"
+            if g not in SOUND_GRADES: dropped += 1; continue
+            sh = idx.find("«" + h["q"] + "»") if len(h["q"]) >= 25 else idx.find(h["m"])
+            if sh: h.update({"x": sh["x"], "hl": sh["h"], "w": sh["w"]}); explained += 1
+            out.append(h); kept += 1
+        b["h"] = out
+    d["books"] = [b for b in d["books"] if b["h"]]
+    if kept < 1000: raise SystemExit(f"ERROR: too few sound hadiths left in Bulugh al-Maram ({kept})")
+    json.dump(d, open(path, "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
+    print(f"bulugh (fiqh): kept {kept} sahih/hasan, dropped {dropped} weak or ungraded · with explanation {explained}")
+
+
+def build_hadith_library(D, OUT, sharh_items=None):
+    """«الأحاديث المشروحة», arranged: the Forty of an-Nawawi (in their order), then what al-Bukhari and Muslim both
+    narrate, then al-Bukhari, then Muslim, then other sahih/hasan hadiths. Every hadith with its explanation from
+    HadeethEnc (sahih/hasan only). Items are positions in muslim/hadith_sharh.json, so nothing is stored twice."""
+    import hadith_sharh
+    items = sharh_items or []
+    path = f"{OUT}/muslim/hadith_library.json"
+    if len(items) < 100:
+        json.dump({"groups": []}, open(path, "w", encoding="utf-8"))
+        print("hadith library: no explanations available in this build"); return
+    pos = {id(h): i for i, h in enumerate(items)}
+    idx = hadith_sharh.Index(items)
+    nw = json.load(open(fetch(NAWAWI, f"{D}/nawawi40.json"), encoding="utf-8"))
+    forty, nums, used = [], [], set()
+    for h in sorted(nw["hadiths"], key=lambda x: x["idInBook"]):
+        it = idx.find(h["arabic"])
+        if it and pos[id(it)] not in used: forty.append(pos[id(it)]); nums.append(h["idInBook"]); used.add(pos[id(it)])
+    plain = lambda t: re.sub("[\u064b-\u0652]", "", t or "")
+    agreed, bukhari, muslim, other = [], [], [], []
+    for i, h in enumerate(items):
+        if i in used: continue
+        src = plain(h["s"])
+        if "متفق عليه" in src: agreed.append(i)
+        elif "البخاري" in src and "مسلم" in src: agreed.append(i)
+        elif re.search(r"رواه البخاري|أخرجه البخاري", src): bukhari.append(i)
+        elif re.search(r"رواه مسلم|أخرجه مسلم", src): muslim.append(i)
+        else: other.append(i)
+    groups = [
+        {"title": "الأربعون النووية", "desc": "الأحاديث الأربعون التي جمعها الإمام النووي، كل حديث بشرحه", "items": forty, "nums": nums},
+        {"title": "متفق عليه", "desc": "ما رواه البخاري ومسلم كلاهما", "items": agreed},
+        {"title": "من صحيح البخاري", "desc": "", "items": bukhari},
+        {"title": "من صحيح مسلم", "desc": "", "items": muslim},
+        {"title": "أحاديث صحيحة وحسنة أخرى", "desc": "من السنن والمسانيد، بحكم أهل العلم عليها", "items": other},
+    ]
+    groups = [g for g in groups if g["items"]]
+    json.dump({"src": "«موسوعة الأحاديث النبوية» hadeethenc.com — بإشراف متخصصين", "groups": groups},
+              open(path, "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
+    print("hadith library:", " · ".join(f"{g['title']} {len(g['items'])}" for g in groups))
+
+
 # ------------------------------------------------------------------ recitation word timings (optional)
 def build_timings(D, OUT):
     """Word timings from github.com/cpfair/quran-align releases (CC-BY 4.0). Optional: never fails the build."""

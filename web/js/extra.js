@@ -113,24 +113,36 @@ export async function openVirtues() {
 
 // ---------------------------------------------------------------- explained hadiths
 export async function openHadithLibrary() {
-  let all = [];
-  try { all = await json('data/muslim/hadith_sharh.json'); } catch { /* missing in this build */ }
-  const norm = all.map((h) => normalize(`${h.title} ${h.t}`));
+  let all = [], lib = { groups: [] };
+  try { [all, lib] = await Promise.all([json('data/muslim/hadith_sharh.json'), json('data/muslim/hadith_library.json')]); } catch { /* missing in this build */ }
+  const groups = lib.groups || [];
   ui.screen({
-    title: 'أحاديث مشروحة', sub: all.length ? `${ar(all.length)} حديثًا صحيحًا أو حسنًا مع الشرح والفوائد` : '',
+    title: 'الأحاديث المشروحة', sub: 'كل حديث صحيح أو حسن، ومعه شرحه وفوائده',
     render(body) {
-      if (!all.length) { body.innerHTML = '<p class="muted">الأحاديث المشروحة غير متوفرة في هذه النسخة.</p>'; return; }
-      let q = '';
-      const draw = () => {
-        const nq = normalize(q);
-        const idx = nq.length < 2 ? all.map((_, i) => i) : all.map((_, i) => i).filter((i) => norm[i].includes(nq));
-        $('[data-list]', body).innerHTML = idx.slice(0, 150).map((i) => `<div class="card">${hadithHtml(all[i], 16)}</div>`).join('') || '<p class="muted">لا نتائج.</p>';
-      };
-      body.innerHTML = `<input class="input" data-q placeholder="ابحث بكلمة من الحديث"><p class="muted">المصدر: «موسوعة الأحاديث النبوية» hadeethenc.com</p><div data-list></div>`;
-      $('[data-q]', body).oninput = (e) => { q = e.target.value; draw(); };
-      draw();
+      if (!all.length || !groups.length) { body.innerHTML = '<p class="muted">الأحاديث المشروحة غير متوفرة في هذه النسخة.</p>'; return; }
+      body.innerHTML = groups.map((g, i) => `<button class="card" style="display:block;width:100%;text-align:right" data-g="${i}">
+          <div class="row"><b class="grow" style="color:var(--gharib);font-size:18px">${esc(g.title)}</b><span class="muted">${ar(g.items.length)} حديثًا ›</span></div>
+          ${g.desc ? `<div class="muted">${esc(g.desc)}</div>` : ''}</button>`).join('') + `<p class="muted">المصدر: ${esc(lib.src || '')}</p>`;
+      body.onclick = (e) => { const b = e.target.closest('[data-g]'); if (b) openGroup(groups[+b.dataset.g]); };
     },
   });
+  const openGroup = (g) => {
+    const norm = g.items.map((i) => normalize(`${all[i].title} ${all[i].t}`));
+    ui.screen({
+      title: g.title, sub: `${ar(g.items.length)} حديثًا مع الشرح`,
+      render(body) {
+        let q = '';
+        const draw = () => {
+          const nq = normalize(q);
+          const ks = g.items.map((_, k) => k).filter((k) => nq.length < 2 || norm[k].includes(nq));
+          $('[data-list]', body).innerHTML = ks.slice(0, 200).map((k) => `<div class="card">${g.nums ? `<div class="muted">الحديث ${ar(g.nums[k])}</div>` : ''}${hadithHtml(all[g.items[k]], 16)}</div>`).join('') || '<p class="muted">لا نتائج.</p>';
+        };
+        body.innerHTML = '<input class="input" data-q placeholder="ابحث بكلمة من الحديث"><div data-list></div>';
+        $('[data-q]', body).oninput = (e) => { q = e.target.value; draw(); };
+        draw();
+      },
+    });
+  };
 }
 
 // ---------------------------------------------------------------- English corner

@@ -66,7 +66,7 @@ import com.shehta.mushaf.data.Sheikh
 import com.shehta.mushaf.data.TajweedExample
 import com.shehta.mushaf.data.ar
 
-private fun openUrl(context: Context, url: String) {
+internal fun openUrl(context: Context, url: String) {
     try { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
     catch (e: Exception) { Toast.makeText(context, "لا يوجد تطبيق لفتح الرابط", Toast.LENGTH_SHORT).show() }
 }
@@ -96,9 +96,9 @@ private fun ActionRow(icon: ImageVector, title: String, sub: String, c: MushafCo
 fun SheikhsScreen(c: MushafColors, onBack: () -> Unit, onPodcast: (String) -> Unit) {
     val context = LocalContext.current
     var open by remember { mutableStateOf<Sheikh?>(null) }
-    ScreenScaffold("الشيوخ والدروس", c, onBack, subtitle = "دروس منظّمة، مواعظ، مقاطع قصيرة، وبودكاست") {
+    ScreenScaffold("الشيوخ والدروس", c, onBack, subtitle = "دروس صوتية داخل التطبيق، ومعها الفيديو على يوتيوب") {
         LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            item { Text("اختر الشيخ ثم نوع المحتوى. المقاطع تُفتح على يوتيوب، والبحث في المواعظ والمقاطع القصيرة مقيّد بـ«بدون موسيقى».", fontSize = 13.sp, color = c.muted) }
+            item { Text("اختر الشيخ لتسمع دروسه صوتًا داخل التطبيق، أو تشاهدها فيديو على يوتيوب. البحث في المواعظ والمقاطع القصيرة مقيّد بـ«بدون موسيقى».", fontSize = 13.sp, color = c.muted) }
             Learn.sheikhs.forEach { g ->
                 item { GroupTitle(g.title, c) }
                 items(g.items, key = { it.name }) { s ->
@@ -114,10 +114,12 @@ fun SheikhsScreen(c: MushafColors, onBack: () -> Unit, onPodcast: (String) -> Un
         ModalBottomSheet(onDismissRequest = { open = null }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
             Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 24.dp)) {
                 Text(s.name, fontWeight = FontWeight.Bold, fontSize = 19.sp, modifier = Modifier.padding(bottom = 6.dp))
-                ActionRow(Icons.AutoMirrored.Filled.PlaylistPlay, "دروس وسلاسل منظّمة", "قوائم تشغيل مرتبة (شرح كتاب أو سلسلة كاملة)", c) { openUrl(context, Learn.playlists(s.query)) }
-                ActionRow(Icons.Filled.VideoLibrary, "محاضرات ومواعظ", "خطب ودروس منفردة", c) { openUrl(context, Learn.lectures(s.query)) }
+                // audio first (played inside the app, resumes where you stopped); every lesson also has «فيديو على يوتيوب»
+                ActionRow(Icons.Filled.Headphones, "استمع لدروسه (صوت)", "داخل التطبيق، ويكمل من حيث توقفت — ولكل درس زر «شاهده فيديو»", c) { open = null; onPodcast(s.query) }
+                Text("أو شاهد على يوتيوب", fontSize = 13.sp, color = c.muted, modifier = Modifier.padding(top = 10.dp, bottom = 2.dp))
+                ActionRow(Icons.AutoMirrored.Filled.PlaylistPlay, "دروس وسلاسل منظّمة (فيديو)", "قوائم تشغيل مرتبة (شرح كتاب أو سلسلة كاملة)", c) { openUrl(context, Learn.playlists(s.query)) }
+                ActionRow(Icons.Filled.VideoLibrary, "محاضرات ومواعظ (فيديو)", "خطب ودروس منفردة", c) { openUrl(context, Learn.lectures(s.query)) }
                 ActionRow(Icons.Filled.SmartDisplay, "مقاطع قصيرة", "Shorts — بدون موسيقى", c) { openUrl(context, Learn.shorts(s.query)) }
-                ActionRow(Icons.Filled.Podcasts, "بودكاست صوتي", "يُشغَّل داخل التطبيق ويكمل من حيث توقفت", c) { open = null; onPodcast(s.query) }
                 ActionRow(Icons.Filled.Subscriptions, "القناة على يوتيوب", "ابحث عن القناة الرسمية واشترك فيها", c) { openUrl(context, Learn.channel(s.query)) }
             }
         }

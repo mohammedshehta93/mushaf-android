@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material.icons.filled.Event
@@ -78,7 +79,7 @@ import java.util.Locale
 
 /** The Muslim's daily hub: next prayer, today's azkar, hadith of the day and every tool. */
 @Composable
-fun HomeScreen(mp: MuslimPrefs, c: MushafColors, onBack: () -> Unit, onPick: (String) -> Unit) {
+fun HomeScreen(mp: MuslimPrefs, c: MushafColors, lastPage: Int, onBack: (() -> Unit)?, onPick: (String) -> Unit) {
     val context = LocalContext.current
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { delay(30_000); now = System.currentTimeMillis() } }
@@ -89,8 +90,24 @@ fun HomeScreen(mp: MuslimPrefs, c: MushafColors, onBack: () -> Unit, onPick: (St
     val cal = Calendar.getInstance().apply { timeInMillis = now }
     val hourNow = cal.get(Calendar.HOUR_OF_DAY) + cal.get(Calendar.MINUTE) / 60.0
 
-    ScreenScaffold("المسلم", c, onBack, subtitle = "$hijri · ${SimpleDateFormat("EEEE d MMMM yyyy", Locale("ar")).format(Date(now))}") {
+    ScreenScaffold("تِبيان", c, onBack, subtitle = "$hijri · ${SimpleDateFormat("EEEE d MMMM yyyy", Locale("ar")).format(Date(now))}") {
         LazyColumn(contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            // ---- the Mushaf first: continue reading where the reader stopped
+            item {
+                Card2(c, Modifier.clickable { onPick("mushaf") }) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(52.dp).background(c.gharib, CircleShape), contentAlignment = Alignment.Center) {
+                            Icon(Icons.AutoMirrored.Filled.MenuBook, null, tint = c.paper)
+                        }
+                        Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                            Text("المصحف", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                            Text("تابع القراءة: سورة ${com.shehta.mushaf.data.Quran.surahOfPage(lastPage).name} · صفحة ${lastPage.ar()}",
+                                fontSize = 14.sp, color = c.muted)
+                        }
+                        Text("اقرأ ›", color = c.gharib, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
             // ---- prayer card
             item {
                 Card2(c, Modifier.clickable { onPick("prayer") }) {
@@ -197,7 +214,7 @@ fun HomeScreen(mp: MuslimPrefs, c: MushafColors, onBack: () -> Unit, onPick: (St
                 "طلب العلم" to listOf(
                     Triple("sheikhs", Icons.Filled.School, "الشيوخ والدروس"),
                     Triple("poems", Icons.AutoMirrored.Filled.LibraryBooks, "المتون والمنظومات"),
-                    Triple("hadiths", Icons.Filled.FormatQuote, "أحاديث مشروحة"),
+                    Triple("hadiths", Icons.Filled.FormatQuote, "الأحاديث المشروحة"),
                     Triple("hadithcheck", Icons.Filled.VerifiedUser, "تحقّق من حديث"),
                     Triple("fiqh", Icons.Filled.Gavel, "تعلّم الفقه"),
                     Triple("names", Icons.Filled.Star, "أسماء الله الحسنى"),

@@ -116,7 +116,7 @@ fun FiqhScreen(prefs: Prefs, onBack: () -> Unit) {
                         }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "رجوع") }
                         Column(Modifier.weight(1f)) {
                             Text("تعلّم الفقه بأدلته", fontWeight = FontWeight.Bold, fontSize = 19.sp)
-                            Text("بلوغ المرام من أدلة الأحكام — ابن حجر", fontSize = 12.sp, color = c.onBar.copy(alpha = 0.8f))
+                            Text("بلوغ المرام لابن حجر — الصحيح والحسن فقط، مع الشرح", fontSize = 12.sp, color = c.onBar.copy(alpha = 0.8f))
                         }
                     }
                     if (openBook == null && openHadith == null && quizBook == null) {
@@ -216,15 +216,21 @@ fun GradeBadge(g: String) {
     Text(g, fontSize = 11.sp, color = col, modifier = Modifier.border(1.dp, col, RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 1.dp))
 }
 
+/**
+ * The Prophet's words { … } in colour. Each quoted part is one styled span: a span per letter breaks the joining of
+ * Arabic letters on Android (every letter was drawn on its own).
+ */
 private fun styledMatn(m: String, c: MushafColors): AnnotatedString = buildAnnotatedString {
-    var depth = 0
-    for (ch in m) {
-        when (ch) {
-            '{' -> { depth++; append('«') }
-            '}' -> { depth = (depth - 1).coerceAtLeast(0); append('»') }
-            else -> if (depth > 0) withStyle(SpanStyle(color = c.gharib, fontWeight = FontWeight.SemiBold)) { append(ch) } else append(ch)
-        }
+    var i = 0
+    val re = Regex("\\{([^{}]*)\\}")
+    for (x in re.findAll(m)) {
+        append(m.substring(i, x.range.first))
+        append('«')
+        withStyle(SpanStyle(color = c.gharib, fontWeight = FontWeight.SemiBold)) { append(x.groupValues[1]) }
+        append('»')
+        i = x.range.last + 1
     }
+    append(m.substring(i).replace("{", "«").replace("}", "»"))
 }
 
 @Composable
@@ -243,6 +249,23 @@ private fun HadithPager(list: List<Hadith>, start: Int, prefs: Prefs, c: MushafC
             Text(styledMatn(h.matn, c), fontSize = (prefs.tafsirFontSize + 2).sp, lineHeight = ((prefs.tafsirFontSize + 2) * 1.8f).sp,
                 textAlign = TextAlign.Justify, modifier = Modifier.padding(vertical = 12.dp))
             if (h.takhrij.isNotBlank()) Text(h.takhrij, fontSize = 14.sp, color = c.muted)
+            // the explanation, its lessons and the meaning of difficult words (HadeethEnc), when available
+            h.explained?.let { x ->
+                Card2(c, Modifier.padding(top = 12.dp)) {
+                    Text("شرح الحديث", fontWeight = FontWeight.Bold, color = c.gharib, fontSize = 16.sp)
+                    Text(x.explanation, fontSize = (prefs.tafsirFontSize - 1).sp, lineHeight = ((prefs.tafsirFontSize - 1) * 1.75f).sp,
+                        textAlign = TextAlign.Justify, modifier = Modifier.padding(top = 6.dp))
+                    if (x.hints.isNotEmpty()) {
+                        Text("من فوائد الحديث", fontWeight = FontWeight.Bold, color = c.gharib, modifier = Modifier.padding(top = 10.dp))
+                        x.hints.forEach { Text("• $it", fontSize = 15.sp, lineHeight = 26.sp, modifier = Modifier.padding(top = 4.dp)) }
+                    }
+                    if (x.words.isNotEmpty()) {
+                        Text("معاني الكلمات", fontWeight = FontWeight.Bold, color = c.gharib, modifier = Modifier.padding(top = 10.dp))
+                        x.words.forEach { (w, m) -> Text("$w: $m", fontSize = 15.sp, lineHeight = 26.sp, modifier = Modifier.padding(top = 4.dp)) }
+                    }
+                    Text("الشرح من «موسوعة الأحاديث النبوية» hadeethenc.com", fontSize = 11.sp, color = c.muted, modifier = Modifier.padding(top = 8.dp))
+                }
+            }
             Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 val mem = h.key in prefs.fiqhMemorized
                 OutlinedButton(onClick = { prefs.toggleFiqhMemorized(h.key) }) { Text(if (mem) "✓ محفوظ" else "علّمه محفوظًا") }
@@ -306,7 +329,7 @@ private fun DailyLesson(prefs: Prefs, c: MushafColors, onOpen: (List<Hadith>, In
 private fun QuizBooks(books: List<FiqhBook>, prefs: Prefs, c: MushafColors, onStart: (Int) -> Unit) {
     LazyColumn {
         item {
-            Text("أسئلة من نص الأحاديث نفسها: راوي الحديث، إكمال لفظ النبي ﷺ، ودرجة الحديث عند المحقق.",
+            Text("أسئلة من نص الأحاديث نفسها: راوي الحديث، وإكمال لفظ النبي ﷺ.",
                 fontSize = 13.sp, color = c.muted, modifier = Modifier.padding(16.dp), lineHeight = 21.sp)
         }
         items(books.size) { i ->

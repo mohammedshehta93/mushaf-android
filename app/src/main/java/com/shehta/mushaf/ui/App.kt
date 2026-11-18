@@ -7,6 +7,8 @@ import android.content.Context
 import android.content.Intent
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -42,6 +44,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.AutoStories
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
@@ -178,7 +181,17 @@ fun App(prefs: Prefs, mp: MuslimPrefs) {
     val config = LocalConfiguration.current
     val spread = config.screenWidthDp > config.screenHeightDp && prefs.twoPagesLandscape && prefs.mode == ViewMode.PAGE
 
-    var overlay by remember { mutableStateOf<Overlay>(Overlay.None) }
+    // «تِبيان» opens on its home (the Mushaf is one of its parts) unless the reader chose to open on the Mushaf
+    var overlay by remember { mutableStateOf<Overlay>(if (prefs.homeFirst && Launch.page == 0) Overlay.Home else Overlay.None) }
+    // where the reader came from: «back» returns there, with its scroll position (see SaveableStateProvider below)
+    val navStack = remember { mutableStateListOf<Overlay>() }
+    fun open(o: Overlay) {
+        if (o == Overlay.Home) navStack.clear()              // the home is the root
+        else if (overlay != o) navStack.add(overlay)          // None = the Mushaf page: «back» returns to it
+        overlay = o
+    }
+    fun back() { overlay = navStack.removeLastOrNull() ?: if (prefs.homeFirst && overlay != Overlay.Home) Overlay.Home else Overlay.None }
+    val screenStates = rememberSaveableStateHolder()
     var tadabburFor by remember { mutableStateOf<Selection?>(null) }
     val listenPrefs = remember { com.shehta.mushaf.data.ListenPrefs(context) }
     val readingPrefs = remember { ReadingPrefs(context) }
@@ -202,7 +215,7 @@ fun App(prefs: Prefs, mp: MuslimPrefs) {
     fun startReading() {
         if (readingStarted) return
         readingStarted = true
-        if (readingPrefs.shouldShowIntentions()) overlay = Overlay.Intentions else nextReminder()
+        if (readingPrefs.shouldShowIntentions()) open(Overlay.Intentions) else nextReminder()
     }
     var barsVisible by remember { mutableStateOf(false) }
     var selection by remember { mutableStateOf<Selection?>(null) }
@@ -232,7 +245,7 @@ fun App(prefs: Prefs, mp: MuslimPrefs) {
 
     fun goTo(page: Int, sel: Selection? = null) {
         scope.launch { pager.scrollToPage(indexOfPage(page.coerceIn(1, Quran.PAGES))) }
-        selection = sel; meaning = null; overlay = Overlay.None
+        selection = sel; meaning = null; overlay = Overlay.None; navStack.clear()
         startReading()
     }
 
@@ -240,10 +253,10 @@ fun App(prefs: Prefs, mp: MuslimPrefs) {
     LaunchedEffect(Launch.page) { if (Launch.page > 0) { goTo(Launch.page); Launch.page = 0 } }
     LaunchedEffect(Launch.screen) {
         when (Launch.screen) {
-            "prayer" -> overlay = Overlay.Prayer()
-            "azkar_morning" -> overlay = Overlay.Azkar(MuslimData.MORNING)
-            "azkar_evening" -> overlay = Overlay.Azkar(MuslimData.EVENING)
-            "notes" -> { IndexTabs.request = 4; overlay = Overlay.Index }
+            "prayer" -> open(Overlay.Prayer())
+            "azkar_morning" -> open(Overlay.Azkar(MuslimData.MORNING))
+            "azkar_evening" -> open(Overlay.Azkar(MuslimData.EVENING))
+            "notes" -> { IndexTabs.request = 4; open(Overlay.Index) }
             else -> Regex("tadabbur:(\\d+):(\\d+)").matchEntire(Launch.screen)?.let { m ->
                 val sel = Selection(m.groupValues[1].toInt(), m.groupValues[2].toInt())
                 goTo(Quran.pageOf(sel.s, sel.a), sel); if (prefs.tadabburSheet) tadabburFor = sel
@@ -298,6 +311,10 @@ fun App(prefs: Prefs, mp: MuslimPrefs) {
         }
     }
 
+    // on the Mushaf with nothing open: «back» goes to the home of تِبيان
+    BackHandler(enabled = prefs.homeFirst && overlay == Overlay.None && !(barsVisible || meaning != null || selection != null || hifzOn)) {
+        open(Overlay.Home)
+    }
     BackHandler(enabled = overlay == Overlay.None && (barsVisible || meaning != null || selection != null || hifzOn)) {
         when {
             meaning != null || selection != null -> { meaning = null; selection = null }
@@ -433,7 +450,7 @@ fun App(prefs: Prefs, mp: MuslimPrefs) {
                 reminder?.let { r -> TadabburCard(colors, r, onDismiss = { reminder = null }) }
             }
             AnimatedVisibility(visible = audio.active && overlay == Overlay.None && !hifzOn) {
-                MiniPlayer(colors, onOpen = { if (audio.stream) overlay = Overlay.Listen() else playerFor = intArrayOf(audio.s, audio.a) },
+                MiniPlayer(colors, onOpen = { if (audio.stream) open(Overlay.Listen()) else playerFor = intArrayOf(audio.s, audio.a) },
                     modifier = if (barsVisible) Modifier else Modifier.navigationBarsPadding())
             }
             AnimatedVisibility(visible = hifzOn && overlay == Overlay.None) {
@@ -498,7 +515,7 @@ fun App(prefs: Prefs, mp: MuslimPrefs) {
                             )
                         }
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                            BarButton(Icons.AutoMirrored.Filled.MenuBook, "الفهرس") { overlay = Overlay.Index }
+                            BarButton(Icons.AutoMirrored.Filled.MenuBook, "الفهرس") { open(Overlay.Index) }
                             BarButton(Icons.Filled.Headphones, "استماع") {
                                 val fa = Quran.firstAyah(current); playerFor = intArrayOf(fa[0], fa[1])
                             }
@@ -507,7 +524,7 @@ fun App(prefs: Prefs, mp: MuslimPrefs) {
                                 if (prefs.mode == ViewMode.TAJWEED) prefs.updateMode(ViewMode.PAGE)
                             }
                             BarButton(Icons.Filled.ViewDay, "العرض") { showView = true }
-                            BarButton(Icons.Filled.MoreHoriz, "المزيد") { overlay = Overlay.Home; barsVisible = false }
+                            BarButton(Icons.Filled.Home, "الرئيسية") { open(Overlay.Home); barsVisible = false }
                         }
                     }
                 }
@@ -522,85 +539,88 @@ fun App(prefs: Prefs, mp: MuslimPrefs) {
         ) {
             val g = meaning
             if (g != null) MeaningCard(g, colors,
-                onTafsir = { overlay = Overlay.Tafsir(g.s, g.a); meaning = null },
+                onTafsir = { open(Overlay.Tafsir(g.s, g.a)); meaning = null },
                 onClose = { meaning = null; selection = null })
         }
 
         // ------------------------------------------------------------------ overlays
-        when (val o = overlay) {
-            Overlay.Index -> IndexScreen(prefs, current, onBack = { overlay = Overlay.None }, onGo = { p, s -> goTo(p, s) })
-            Overlay.Search -> SearchScreen(onBack = { overlay = Overlay.None }, onGo = { s, a -> goTo(Quran.pageOf(s, a), Selection(s, a)) })
-            Overlay.Hifz -> HifzScreen(prefs, onBack = { overlay = Overlay.None }, onGo = { p, s -> goTo(p, s) },
+        // each screen keeps its own saved state (lists keep their scroll position) while the reader goes deeper and back
+        val shown = overlay
+        if (shown != Overlay.None) screenStates.SaveableStateProvider(navKey(shown)) { when (val o = shown) {
+            Overlay.Index -> IndexScreen(prefs, current, onBack = { back() }, onGo = { p, s -> goTo(p, s) })
+            Overlay.Search -> SearchScreen(onBack = { back() }, onGo = { s, a -> goTo(Quran.pageOf(s, a), Selection(s, a)) })
+            Overlay.Hifz -> HifzScreen(prefs, onBack = { back() }, onGo = { p, s -> goTo(p, s) },
                 onStartHifz = { overlay = Overlay.None; hifzOn = true })
-            Overlay.Khatma -> KhatmaScreen(prefs, current, onBack = { overlay = Overlay.None }, onGo = { goTo(it) })
-            Overlay.Fiqh -> FiqhScreen(prefs, onBack = { overlay = Overlay.None })
-            is Overlay.Tafsir -> TafsirScreen(o.s, o.a, prefs, onBack = { overlay = Overlay.None }, onGo = { s, a -> goTo(Quran.pageOf(s, a), Selection(s, a)) })
-            is Overlay.Root -> RootScreen(o.root, prefs, onBack = { overlay = Overlay.None }, onGo = { p, s -> goTo(p, s) })
-            Overlay.Home -> HomeScreen(mp, colors, onBack = { overlay = Overlay.None }, onPick = { id ->
+            Overlay.Khatma -> KhatmaScreen(prefs, current, onBack = { back() }, onGo = { goTo(it) })
+            Overlay.Fiqh -> FiqhScreen(prefs, onBack = { back() })
+            is Overlay.Tafsir -> TafsirScreen(o.s, o.a, prefs, onBack = { back() }, onGo = { s, a -> goTo(Quran.pageOf(s, a), Selection(s, a)) })
+            is Overlay.Root -> RootScreen(o.root, prefs, onBack = { back() }, onGo = { p, s -> goTo(p, s) })
+            Overlay.Home -> HomeScreen(mp, colors, prefs.lastPage, onBack = if (prefs.homeFirst) null else ({ back() }), onPick = { id ->
                 when {
-                    id.startsWith("azkar:") -> overlay = Overlay.Azkar(id.removePrefix("azkar:"))
+                    id == "mushaf" -> goTo(prefs.lastPage)
+                    id.startsWith("azkar:") -> open(Overlay.Azkar(id.removePrefix("azkar:")))
                     else -> when (id) {
-                        "prayer" -> overlay = Overlay.Prayer()
-                        "tracker" -> overlay = Overlay.Prayer(1)
-                        "qibla" -> overlay = Overlay.Qibla
-                        "azkar" -> overlay = Overlay.Azkar()
-                        "tasbih" -> overlay = Overlay.Tasbih
-                        "hijri" -> overlay = Overlay.Hijri
-                        "ramadan" -> overlay = Overlay.Ramadan
-                        "zakat" -> overlay = Overlay.Zakat
-                        "names" -> overlay = Overlay.Names
-                        "listen", "radio" -> overlay = Overlay.Listen(0)
-                        "podcast" -> overlay = Overlay.Listen(1)
-                        "nasheed" -> overlay = Overlay.Listen(2)
-                        "sheikhs" -> overlay = Overlay.Sheikhs
-                        "poems" -> overlay = Overlay.Poems
-                        "tajweed" -> overlay = Overlay.TajweedCourse
-                        "feedback" -> overlay = Overlay.Feedback
-                        "virtues" -> overlay = Overlay.Virtues
-                        "intentions" -> overlay = Overlay.Intentions
-                        "hadiths" -> overlay = Overlay.HadithLibrary
-                        "hadithcheck" -> overlay = Overlay.HadithCheck
-                        "surahinfo" -> overlay = Overlay.SurahInfo()
-                        "english" -> overlay = Overlay.English
-                        "recite" -> overlay = Overlay.Recite()
-                        "review" -> overlay = Overlay.Recite(review = true)
+                        "prayer" -> open(Overlay.Prayer())
+                        "tracker" -> open(Overlay.Prayer(1))
+                        "qibla" -> open(Overlay.Qibla)
+                        "azkar" -> open(Overlay.Azkar())
+                        "tasbih" -> open(Overlay.Tasbih)
+                        "hijri" -> open(Overlay.Hijri)
+                        "ramadan" -> open(Overlay.Ramadan)
+                        "zakat" -> open(Overlay.Zakat)
+                        "names" -> open(Overlay.Names)
+                        "listen", "radio" -> open(Overlay.Listen(0))
+                        "podcast" -> open(Overlay.Listen(1))
+                        "nasheed" -> open(Overlay.Listen(2))
+                        "sheikhs" -> open(Overlay.Sheikhs)
+                        "poems" -> open(Overlay.Poems)
+                        "tajweed" -> open(Overlay.TajweedCourse)
+                        "feedback" -> open(Overlay.Feedback)
+                        "virtues" -> open(Overlay.Virtues)
+                        "intentions" -> open(Overlay.Intentions)
+                        "hadiths" -> open(Overlay.HadithLibrary)
+                        "hadithcheck" -> open(Overlay.HadithCheck)
+                        "surahinfo" -> open(Overlay.SurahInfo())
+                        "english" -> open(Overlay.English)
+                        "recite" -> open(Overlay.Recite())
+                        "review" -> open(Overlay.Recite(review = true))
                         "kahf" -> goTo(PrayerAlarms.KAHF_PAGE)
-                        "search" -> overlay = Overlay.Search
-                        "marks" -> { IndexTabs.request = 3; overlay = Overlay.Index }
-                        "notes" -> { IndexTabs.request = 4; overlay = Overlay.Index }
-                        "khatma" -> overlay = Overlay.Khatma
-                        "hifz" -> overlay = Overlay.Hifz
-                        "fiqh" -> overlay = Overlay.Fiqh
-                        "tafsir" -> { val fa = Quran.firstAyah(current); overlay = Overlay.Tafsir(fa[0], fa[1]) }
+                        "search" -> open(Overlay.Search)
+                        "marks" -> { IndexTabs.request = 3; open(Overlay.Index) }
+                        "notes" -> { IndexTabs.request = 4; open(Overlay.Index) }
+                        "khatma" -> open(Overlay.Khatma)
+                        "hifz" -> open(Overlay.Hifz)
+                        "fiqh" -> open(Overlay.Fiqh)
+                        "tafsir" -> { val fa = Quran.firstAyah(current); open(Overlay.Tafsir(fa[0], fa[1])) }
                         "share" -> showShare = true
                         "settings" -> showSettings = true
                     }
                 }
             })
-            is Overlay.Prayer -> PrayerScreen(mp, colors, onBack = { overlay = Overlay.Home }, startTab = o.tab)
-            Overlay.Qibla -> QiblaScreen(mp, colors, onBack = { overlay = Overlay.Home })
-            is Overlay.Azkar -> AzkarScreen(mp, colors, o.start, onBack = { overlay = Overlay.Home })
-            Overlay.Tasbih -> TasbihScreen(mp, colors, onBack = { overlay = Overlay.Home })
-            Overlay.Hijri -> HijriScreen(mp, colors, onBack = { overlay = Overlay.Home })
-            Overlay.Ramadan -> RamadanScreen(mp, prefs, colors, onBack = { overlay = Overlay.Home }, onKhatma = { overlay = Overlay.Khatma })
-            Overlay.Zakat -> ZakatScreen(mp, colors, onBack = { overlay = Overlay.Home })
-            Overlay.Names -> NamesScreen(colors, onBack = { overlay = Overlay.Home }, onGo = { s, a -> goTo(Quran.pageOf(s, a), Selection(s, a)) })
-            is Overlay.Listen -> androidx.compose.runtime.key(o.tab, o.query) { ListenScreen(colors, listenPrefs, onBack = { overlay = o.back }, startTab = o.tab, podcastQuery = o.query) }
-            Overlay.Sheikhs -> SheikhsScreen(colors, onBack = { overlay = Overlay.Home }, onPodcast = { q -> overlay = Overlay.Listen(1, q, Overlay.Sheikhs) })
-            Overlay.Feedback -> FeedbackScreen(colors, current, onBack = { overlay = Overlay.Home })
+            is Overlay.Prayer -> PrayerScreen(mp, colors, onBack = { back() }, startTab = o.tab)
+            Overlay.Qibla -> QiblaScreen(mp, colors, onBack = { back() })
+            is Overlay.Azkar -> AzkarScreen(mp, colors, o.start, onBack = { back() })
+            Overlay.Tasbih -> TasbihScreen(mp, colors, onBack = { back() })
+            Overlay.Hijri -> HijriScreen(mp, colors, onBack = { back() })
+            Overlay.Ramadan -> RamadanScreen(mp, prefs, colors, onBack = { back() }, onKhatma = { open(Overlay.Khatma) })
+            Overlay.Zakat -> ZakatScreen(mp, colors, onBack = { back() })
+            Overlay.Names -> NamesScreen(colors, onBack = { back() }, onGo = { s, a -> goTo(Quran.pageOf(s, a), Selection(s, a)) })
+            is Overlay.Listen -> androidx.compose.runtime.key(o.tab, o.query) { ListenScreen(colors, listenPrefs, onBack = { back() }, startTab = o.tab, podcastQuery = o.query) }
+            Overlay.Sheikhs -> SheikhsScreen(colors, onBack = { back() }, onPodcast = { q -> open(Overlay.Listen(1, q, Overlay.Sheikhs)) })
+            Overlay.Feedback -> FeedbackScreen(colors, current, onBack = { back() })
             Overlay.Intentions -> IntentionsScreen(colors, readingPrefs, onDone = { overlay = Overlay.None; nextReminder() })
-            Overlay.Virtues -> VirtuesScreen(colors, onBack = { overlay = Overlay.Home }, onGo = { s, a -> goTo(Quran.pageOf(s, a), Selection(s, a)) },
-                onIntentions = { overlay = Overlay.Intentions })
-            Overlay.HadithLibrary -> HadithLibraryScreen(colors, onBack = { overlay = Overlay.Home })
-            Overlay.HadithCheck -> HadithCheckScreen(colors, onBack = { overlay = Overlay.Home })
-            is Overlay.SurahInfo -> SurahInfoScreen(colors, o.start, onBack = { overlay = o.back }, onGo = { s, a -> goTo(Quran.pageOf(s, a), Selection(s, a)) })
-            is Overlay.Recite -> ReciteScreen(colors, prefs, current, o.review, onBack = { overlay = Overlay.Home })
-            Overlay.English -> EnglishScreen(colors, listenPrefs, onBack = { overlay = Overlay.Home },
+            Overlay.Virtues -> VirtuesScreen(colors, onBack = { back() }, onGo = { s, a -> goTo(Quran.pageOf(s, a), Selection(s, a)) },
+                onIntentions = { open(Overlay.Intentions) })
+            Overlay.HadithLibrary -> HadithLibraryScreen(colors, onBack = { back() })
+            Overlay.HadithCheck -> HadithCheckScreen(colors, onBack = { back() })
+            is Overlay.SurahInfo -> SurahInfoScreen(colors, o.start, onBack = { back() }, onGo = { s, a -> goTo(Quran.pageOf(s, a), Selection(s, a)) })
+            is Overlay.Recite -> ReciteScreen(colors, prefs, current, o.review, onBack = { back() })
+            Overlay.English -> EnglishScreen(colors, listenPrefs, onBack = { back() },
                 onGo = { s, a -> goTo(Quran.pageOf(s, a), Selection(s, a)) })
-            Overlay.Poems -> PoemsScreen(colors, listenPrefs, onBack = { overlay = Overlay.Home })
-            Overlay.TajweedCourse -> TajweedCourseScreen(colors, onBack = { overlay = Overlay.Home }, onGo = { s, a -> goTo(Quran.pageOf(s, a), Selection(s, a)) })
+            Overlay.Poems -> PoemsScreen(colors, listenPrefs, onBack = { back() })
+            Overlay.TajweedCourse -> TajweedCourseScreen(colors, onBack = { back() }, onGo = { s, a -> goTo(Quran.pageOf(s, a), Selection(s, a)) })
             Overlay.None -> {}
-        }
+        } }
     }
 
     // ------------------------------------------------------------------ sheets & dialogs
@@ -609,7 +629,7 @@ fun App(prefs: Prefs, mp: MuslimPrefs) {
         AyahActions(
             sel = sel, prefs = prefs, colors = colors,
             onDismiss = { actionFor = null },
-            onTafsir = { actionFor = null; overlay = Overlay.Tafsir(sel.s, sel.a) },
+            onTafsir = { actionFor = null; open(Overlay.Tafsir(sel.s, sel.a)) },
             onTadabbur = { actionFor = null; tadabburFor = sel },
             onMeanings = { actionFor = null; meaningsOf = sel },
             onNote = { actionFor = null; noteFor = sel },
@@ -619,7 +639,7 @@ fun App(prefs: Prefs, mp: MuslimPrefs) {
             },
             onRepeat = { actionFor = null; playerFor = intArrayOf(sel.s, sel.a) },
             onWordAudio = { AudioEngine.playWord(sel.s, sel.a, sel.w) { Toast.makeText(context, "تعذّر تشغيل نطق الكلمة (يحتاج إنترنت)", Toast.LENGTH_SHORT).show() } },
-            onRoot = { r -> actionFor = null; overlay = Overlay.Root(r) },
+            onRoot = { r -> actionFor = null; open(Overlay.Root(r)) },
             onBookmark = {
                 actionFor = null
                 prefs.addBookmark(Quran.pageOf(sel.s, sel.a), sel.s, sel.a)
@@ -632,8 +652,8 @@ fun App(prefs: Prefs, mp: MuslimPrefs) {
     meaningsOf?.let { sel -> MeaningsSheet(sel, colors, onDismiss = { meaningsOf = null }) }
     tadabburFor?.let { sel ->
         TadabburSheet(sel.s, sel.a, prefs, colors, onDismiss = { tadabburFor = null },
-            onTafsir = { tadabburFor = null; overlay = Overlay.Tafsir(sel.s, sel.a) },
-            onSurahInfo = { tadabburFor = null; overlay = Overlay.SurahInfo(sel.s, back = Overlay.None) },
+            onTafsir = { tadabburFor = null; open(Overlay.Tafsir(sel.s, sel.a)) },
+            onSurahInfo = { tadabburFor = null; open(Overlay.SurahInfo(sel.s, back = Overlay.None)) },
             onNote = { noteFor = sel },
             onGo = { s, a -> tadabburFor = null; goTo(Quran.pageOf(s, a), Selection(s, a)) })
     }
@@ -647,19 +667,31 @@ fun App(prefs: Prefs, mp: MuslimPrefs) {
         onPick = { what ->
             showMore = false; barsVisible = false
             when (what) {
-                "search" -> overlay = Overlay.Search
-                "marks" -> { IndexTabs.request = 3; overlay = Overlay.Index }
-                "notes" -> { IndexTabs.request = 4; overlay = Overlay.Index }
-                "khatma" -> overlay = Overlay.Khatma
-                "hifz" -> overlay = Overlay.Hifz
-                "fiqh" -> overlay = Overlay.Fiqh
-                "tafsir" -> { val fa = Quran.firstAyah(current); overlay = Overlay.Tafsir(fa[0], fa[1]) }
+                "search" -> open(Overlay.Search)
+                "marks" -> { IndexTabs.request = 3; open(Overlay.Index) }
+                "notes" -> { IndexTabs.request = 4; open(Overlay.Index) }
+                "khatma" -> open(Overlay.Khatma)
+                "hifz" -> open(Overlay.Hifz)
+                "fiqh" -> open(Overlay.Fiqh)
+                "tafsir" -> { val fa = Quran.firstAyah(current); open(Overlay.Tafsir(fa[0], fa[1])) }
                 "settings" -> showSettings = true
                 "share" -> showShare = true
             }
         },
     )
     UpdateDialog(prefs)
+}
+
+/** A key per screen (and its arguments), so each one keeps its own saved state. */
+private fun navKey(o: Overlay): String = when (o) {
+    is Overlay.Listen -> "Listen:${o.tab}:${o.query}"
+    is Overlay.Prayer -> "Prayer:${o.tab}"
+    is Overlay.Azkar -> "Azkar:${o.start}"
+    is Overlay.Tafsir -> "Tafsir:${o.s}:${o.a}"
+    is Overlay.Root -> "Root:${o.root}"
+    is Overlay.SurahInfo -> "SurahInfo:${o.start}"
+    is Overlay.Recite -> "Recite:${o.review}"
+    else -> o::class.java.simpleName
 }
 
 private fun pageHasSajda(page: Int): Boolean {

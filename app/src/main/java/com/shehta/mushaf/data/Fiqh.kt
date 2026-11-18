@@ -7,6 +7,8 @@ import kotlin.random.Random
 class Hadith(
     val book: Int, val number: Int, val matn: String, val takhrij: String, val grade: String,
     val narrator: String, val prophetWords: String, val notes: List<String>,
+    /** Explanation, lessons and word meanings (HadeethEnc), when the same hadith is there. */
+    val explained: DailyHadith? = null,
 ) {
     val key get() = "$book:$number"
 }
@@ -39,7 +41,8 @@ object Fiqh {
                     val h = hs.getJSONObject(hi)
                     val n = h.getJSONArray("n")
                     Hadith(bi, h.getInt("i"), h.getString("m"), h.getString("t"), h.getString("g"),
-                        h.getString("r"), h.getString("q"), List(n.length()) { n.getString(it) })
+                        h.getString("r"), h.getString("q"), List(n.length()) { n.getString(it) },
+                        if (h.optString("x").isNotEmpty()) parseHadith(JSONObject(h.toString()).put("t", "").put("s", "")) else null)
                 })
             }
             data = list
@@ -76,7 +79,7 @@ object Fiqh {
         val out = ArrayList<QuizQuestion>()
         for (h in pool.shuffled(rnd)) {
             if (out.size >= size) break
-            when (rnd.nextInt(3)) {
+            when (rnd.nextInt(2)) {
                 0 -> if (h.grade in sound && h.narrator.isNotBlank() && narrators.size >= 4 && h.prophetWords.isNotBlank()) {
                     val opts = (narrators.filter { it != h.narrator }.shuffled(rnd).take(3) + h.narrator).shuffled(rnd)
                     out += QuizQuestion("من راوي هذا الحديث؟", "«${h.prophetWords.take(220)}»", opts, opts.indexOf(h.narrator),
@@ -95,11 +98,7 @@ object Fiqh {
                         out += QuizQuestion("أكمل الحديث:", "«$head …»", opts, opts.indexOf(tail), "«${h.prophetWords}» ${h.takhrij}")
                     }
                 }
-                else -> if (h.grade in listOf("صحيح", "حسن", "ضعيف")) {
-                    val opts = listOf("صحيح", "حسن", "ضعيف")
-                    out += QuizQuestion("ما حكم المحقق على هذا الحديث؟", "«${h.prophetWords.ifBlank { h.matn }.take(220)}»", opts,
-                        opts.indexOf(h.grade), h.notes.firstOrNull()?.take(300) ?: h.grade)
-                }
+                else -> {}       // (the grade question was dropped: only sahih and hasan hadiths are studied now)
             }
         }
         return out

@@ -158,6 +158,8 @@ def apply(D, OUT, pages, surahs, words_text):
     sharh = hadith_sharh.build(D, OUT)       # explanations (network; never fails)
     extras_prep.attach_daily_sharh(OUT, sharh, D)
     extras_prep.build_reading(D, OUT, sharh) # intentions, tadabbur reminders, virtues — from the official text
+    extras_prep.finish_fiqh(D, OUT, sharh)   # fiqh: sahih/hasan only, with explanations
+    extras_prep.build_hadith_library(D, OUT, sharh)   # explained hadiths: the Forty, al-Bukhari and Muslim
     extras_prep.build_english(D, OUT)
     import hadith_books, hadith_check
     hadith_books.build_db(D, OUT)            # hadith search / authenticity window

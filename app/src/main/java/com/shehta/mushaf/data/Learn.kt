@@ -137,6 +137,8 @@ object Learn {
     fun playlists(q: String) = yt(q, "EgIQAw%3D%3D")                             // playlists only (organised series)
     fun lectures(q: String) = yt(noMusic("$q محاضرة"))
     fun shorts(q: String) = yt(noMusic("$q #shorts"))
+    /** One lesson as video: YouTube search for its title and the speaker. */
+    fun video(q: String) = yt(q)
     fun webSearch(q: String) = "https://www.google.com/search?q=" + enc(q)
 
     // ------------------------------------------------------------------ tajweed course

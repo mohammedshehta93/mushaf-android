@@ -5,6 +5,7 @@ import { app } from './app.js';
 import { hadithHtml, openVirtues, openHadithLibrary, openEnglish } from './extra.js';
 import { openHadithCheck } from './hadith.js';
 import { openSurahInfo } from './surahs.js';
+import { openNotebook } from './tadabbur.js';
 
 // ---------------------------------------------------------------- Hijri (Umm al-Qura calendar built into the browser)
 const HMONTHS = ['محرّم', 'صفر', 'ربيع الأول', 'ربيع الآخر', 'جمادى الأولى', 'جمادى الآخرة', 'رجب', 'شعبان', 'رمضان', 'شوّال', 'ذو القعدة', 'ذو الحجة'];
@@ -62,7 +63,7 @@ export function prayerChip() { const n = nextPrayer(); return n ? ` · ${NAMES[n
 
 // ---------------------------------------------------------------- home hub
 const HOME_SECTIONS = [
-  ['القرآن الكريم', [['index', '☰', 'فهرس المصحف'], ['virtues', '💚', 'فضل القرآن'], ['surahinfo', '📖', 'مقاصد السور وأسباب النزول'], ['search', '🔍', 'البحث في القرآن'], ['tajweed', '🗣', 'تعلّم التجويد'], ['marks', '🔖', 'العلامات']]],
+  ['القرآن الكريم', [['index', '☰', 'فهرس المصحف'], ['virtues', '💚', 'فضل القرآن'], ['surahinfo', '📖', 'مقاصد السور وأسباب النزول'], ['search', '🔍', 'البحث في القرآن'], ['tajweed', '🗣', 'تعلّم التجويد'], ['notebook', '📝', 'دفتر التدبّر'], ['marks', '🔖', 'العلامات']]],
   ['الصلاة والعبادات اليومية', [['prayer', '🕰', 'مواقيت الصلاة'], ['qibla', '🧭', 'القبلة'], ['azkar', '📿', 'الأذكار'], ['tasbih', '👆', 'السبحة'],
     ['hijri', '🗓', 'التقويم الهجري'], ['ramadan', '🌙', 'رمضان'], ['zakat', '🧮', 'الزكاة']]],
   ['طلب العلم', [['sheikhs', '🎓', 'الشيوخ والدروس'], ['poems', '📜', 'المتون والمنظومات'], ['hadiths', '❝', 'أحاديث مشروحة'], ['hadithcheck', '✔', 'تحقّق من حديث'], ['names', '✨', 'أسماء الله الحسنى']]],
@@ -110,7 +111,7 @@ export function openHome() {
         ({
           prayer: () => openPrayer(), qibla: openQibla, azkar: () => openAzkar(), tasbih: openTasbih, hijri: openHijri,
           ramadan: openRamadan, names: openNames, zakat: openZakat, radio: () => openRadio(0), nasheed: () => openRadio(1),
-          sheikhs: openSheikhs, poems: openPoems, tajweed: openTajweed, virtues: openVirtues, hadiths: openHadithLibrary, hadithcheck: openHadithCheck, surahinfo: () => openSurahInfo(), english: openEnglish, settings: app.openSettings, tafsir: () => app.openTafsir?.(), index: () => app.openIndex(), search: app.openSearch,
+          sheikhs: openSheikhs, poems: openPoems, tajweed: openTajweed, virtues: openVirtues, hadiths: openHadithLibrary, hadithcheck: openHadithCheck, surahinfo: () => openSurahInfo(), notebook: openNotebook, english: openEnglish, settings: app.openSettings, tafsir: () => app.openTafsir?.(), index: () => app.openIndex(), search: app.openSearch,
           marks: () => app.openIndex('marks'), share: app.shareApp,
         })[g.dataset.go]?.();
       };
@@ -241,22 +242,38 @@ async function openAzkar(start) {
     ui.screen({
       title, sub: 'حصن المسلم', actions: '<button class="link" style="color:var(--onBar)" data-reset>من جديد</button>',
       render(body) {
+        let showDone = false;
         const draw = () => {
-          const done = cat.i.filter((z, i) => (prog.c[`${title}#${i}`] || 0) >= z.c).length;
-          body.innerHTML = `<div class="muted">أنجزت ${ar(done)} من ${ar(cat.i.length)} — اضغط على الذكر بعد قوله</div>` + cat.i.map((z, i) => {
-            const n = prog.c[`${title}#${i}`] || 0, ok = n >= z.c;
-            return `<div class="zikr ${ok ? 'done' : ''}" data-i="${i}"><div class="t">${esc(z.z).replace(/\n/g, '<br>')}</div>
+          const isDone = (i) => (prog.c[`${title}#${i}`] || 0) >= cat.i[i].c;
+          const done = cat.i.filter((z, i) => isDone(i)).length;
+          // «إخفاء الذكر بعد إتمامه»: a completed dhikr leaves the list like a task ticked off; all come back the next day
+          const hide = store.get('azkarHide', true) && !showDone;
+          const all = done === cat.i.length;
+          body.innerHTML = `<div class="progress"><i style="width:${(done / cat.i.length) * 100}%"></i></div>
+            <div class="muted">أنجزت ${ar(done)} من ${ar(cat.i.length)} — اضغط على الذكر بعد قوله</div>
+            ${all ? `<div class="zikr done" style="text-align:center"><div style="font-size:30px;color:var(--gharib)">✓</div><b>أتممتَ «${esc(title)}»</b><div class="muted">تعود من جديد غدًا</div></div>` : ''}` +
+            cat.i.map((z, i) => {
+              const n = prog.c[`${title}#${i}`] || 0, ok = n >= z.c;
+              if (ok && hide) return '';
+              return `<div class="zikr ${ok ? 'done' : ''}" data-i="${i}"><div class="t">${esc(z.z).replace(/\n/g, '<br>')}</div>
               ${z.d ? `<div style="color:var(--gharib);font-size:13px;margin-top:8px;line-height:1.6">${esc(z.d)}</div>` : ''}
               <div class="row" style="margin-top:8px"><span class="muted grow">${esc(z.r)}</span><span class="counter">${ok ? '✓' : ar(z.c - n)}</span></div></div>`;
-          }).join('');
+            }).join('') +
+            (store.get('azkarHide', true) && done ? `<button class="btn o" style="width:100%;margin-top:8px" data-show>${showDone ? 'إخفاء ما أتممته' : `عرض ما أتممته (${ar(done)})`}</button>` : '');
         };
         draw();
         body.onclick = (e) => {
+          if (e.target.closest('[data-show]')) { showDone = !showDone; return draw(); }
           const z = e.target.closest('[data-i]'); if (!z) return;
           const k = `${title}#${z.dataset.i}`, max = cat.i[+z.dataset.i].c;
           if ((prog.c[k] || 0) >= max) return;
-          prog.c[k] = (prog.c[k] || 0) + 1; save(); if (navigator.vibrate) navigator.vibrate(8);
-          const y = $('.scr-body').scrollTop; draw(); $('.scr-body').scrollTop = y;
+          const day = new Date().toDateString(); if (prog.day !== day) prog = { day, c: {} };     // a new day while open
+          prog.c[k] = (prog.c[k] || 0) + 1; save(); if (navigator.vibrate) navigator.vibrate(prog.c[k] >= max ? 30 : 8);
+          const sc = $('.scr-body'), y = sc.scrollTop;
+          if (prog.c[k] >= max && store.get('azkarHide', true) && !showDone) {
+            z.style.transition = 'opacity .35s, transform .35s'; z.style.opacity = '0'; z.style.transform = 'scale(.96)';
+            setTimeout(() => { draw(); sc.scrollTop = y; }, 350);
+          } else { draw(); sc.scrollTop = y; }
         };
         $('[data-reset]', $('#screen')).onclick = () => { for (const k of Object.keys(prog.c)) if (k.startsWith(`${title}#`)) delete prog.c[k]; save(); draw(); };
       },

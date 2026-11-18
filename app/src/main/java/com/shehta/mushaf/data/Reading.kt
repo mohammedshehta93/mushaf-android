@@ -25,6 +25,12 @@ object Reading {
     }
 
     val intentions: List<RItem> by lazy { list("intentions", "n") }
+
+    /** «وقفة تدبّر»: the three questions, and the hadith of repeating one ayah until the morning. */
+    val tadabburQuestions: List<String> by lazy {
+        root.optJSONObject("tadabbur")?.optJSONArray("questions")?.let { a -> List(a.length()) { a.getString(it) } } ?: emptyList()
+    }
+    val repeatHadith: RItem? by lazy { root.optJSONObject("tadabbur")?.optJSONObject("repeat")?.let { item(it) } }
     val reminders: List<RItem> by lazy { list("reminders", "h") }
     val virtues: List<Group<RItem>> by lazy {
         val a = root.optJSONArray("virtues") ?: JSONArray()

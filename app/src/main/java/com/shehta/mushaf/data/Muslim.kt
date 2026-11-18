@@ -183,6 +183,9 @@ class MuslimPrefs(context: Context) {
     fun updateAdhanSound(uri: String) { adhanSound = uri; sp.edit().putString("adhanUri", uri).apply() }
     fun updateFriday(on: Boolean, minutes: Int) { fridayOn = on; fridayMinutes = minutes; sp.edit().putBoolean("fridayOn", on).putInt("fridayAt", minutes).apply() }
     fun updateAzkarReminders(v: Boolean) { azkarReminders = v; sp.edit().putBoolean("azkarRem", v).apply() }
+    /** A dhikr disappears once its count is complete (like ticking off a task); everything comes back the next day. */
+    var azkarHideDone by mutableStateOf(sp.getBoolean("azkarHide", true)); private set
+    fun updateAzkarHideDone(v: Boolean) { azkarHideDone = v; sp.edit().putBoolean("azkarHide", v).apply() }
 
     /** Today's (or another day's) times, with the user's minute corrections applied. */
     fun times(date: Date = Date()): DayTimes? {
@@ -230,8 +233,9 @@ class MuslimPrefs(context: Context) {
     // azkar progress of today: "category#index" -> remaining count
     private var azkarDay = sp.getString("azkarDay", "") ?: ""
     var azkarDone by mutableStateOf(if (azkarDay == today()) readMap("azkarDone") else emptyMap()); private set
-    fun azkarCount(cat: String, i: Int, total: Int): Int = azkarDone["$cat#$i"] ?: 0
+    fun azkarCount(cat: String, i: Int, total: Int): Int = if (azkarDay == today()) azkarDone["$cat#$i"] ?: 0 else 0
     fun azkarTap(cat: String, i: Int) {
+        if (azkarDay != today()) azkarDone = emptyMap()          // a new day: everything starts again
         val k = "$cat#$i"
         azkarDone = azkarDone + (k to (azkarDone[k] ?: 0) + 1)
         azkarDay = today()

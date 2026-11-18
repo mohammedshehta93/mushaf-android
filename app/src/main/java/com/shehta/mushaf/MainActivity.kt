@@ -59,6 +59,7 @@ class MainActivity : ComponentActivity() {
         prefs = Prefs(this)
         muslim = MuslimPrefs(this)
         Reminder.schedule(this, prefs)
+        com.shehta.mushaf.reminder.TadabburReminder.schedule(this, prefs)
         PrayerAlarms.scheduleAll(this)
         handle(intent)
         thread(name = "preload", priority = Thread.MIN_PRIORITY) { Quran.preload() }

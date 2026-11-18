@@ -3,7 +3,7 @@
 const VERSION = '__VERSION__';
 const SHELL = `mushaf-shell-${VERSION}`;
 const DATA = 'mushaf-data';
-const SHELL_FILES = ['./', 'index.html', 'css/app.css', 'js/app.js', 'js/core.js', 'js/tools.js', 'js/prayer.js',
+const SHELL_FILES = ['./', 'index.html', 'css/app.css', 'js/app.js', 'js/core.js', 'js/tools.js', 'js/prayer.js', 'js/extra.js', 'js/surahs.js', 'js/tadabbur.js',
   'manifest.webmanifest', 'icons/icon-192.png', 'icons/apple-touch-icon.png', 'fonts/hafs.woff2', 'fonts/bsml.woff2', 'data/meta.json', 'data/reciters.json'];
 
 self.addEventListener('install', (e) => {

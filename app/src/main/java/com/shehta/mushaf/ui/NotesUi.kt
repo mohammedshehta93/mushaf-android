@@ -49,17 +49,24 @@ import com.shehta.mushaf.data.ar
 fun NoteDialog(s: Int, a: Int, prefs: Prefs, onDismiss: () -> Unit) {
     val existing = prefs.note(s, a)
     var text by remember { mutableStateOf(existing?.text ?: "") }
+    var act by remember { mutableStateOf(existing?.act ?: "") }
     var color by remember { mutableIntStateOf(existing?.color ?: 0) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("ملاحظة · ${Quran.surahs[s - 1].name} ${a.ar()}") },
+        title = { Text("دفتر التدبّر · ${Quran.surahs[s - 1].name} ${a.ar()}") },
         text = {
             Column {
                 Text(Quran.ayahText(s, a), fontFamily = hafsFamily, fontSize = 19.sp, lineHeight = 34.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 OutlinedTextField(
                     value = text, onValueChange = { text = it },
                     placeholder = { Text("اكتب تدبّرك أو فائدة…") },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 110.dp).padding(top = 10.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp).padding(top = 10.dp),
+                )
+                OutlinedTextField(
+                    value = act, onValueChange = { act = it },
+                    label = { Text("ماذا ستعمل بها؟ (اختياري)") },
+                    placeholder = { Text("مثلًا: أصل رحمي هذا الأسبوع") },
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 )
                 Text("لون التظليل", fontSize = 13.sp, modifier = Modifier.padding(top = 10.dp, bottom = 6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -76,7 +83,7 @@ fun NoteDialog(s: Int, a: Int, prefs: Prefs, onDismiss: () -> Unit) {
                 }
             }
         },
-        confirmButton = { TextButton(onClick = { prefs.saveNote(s, a, text, color); onDismiss() }) { Text("حفظ") } },
+        confirmButton = { TextButton(onClick = { prefs.saveNote(s, a, text, color, act); onDismiss() }) { Text("حفظ") } },
         dismissButton = {
             Row {
                 if (existing != null) TextButton(onClick = { prefs.deleteNote(s, a); onDismiss() }) { Text("حذف") }
@@ -91,7 +98,7 @@ fun NotesList(prefs: Prefs, c: MushafColors, onGo: (Int, Selection?) -> Unit) {
     val list = prefs.notes.values.sortedWith(compareBy({ it.s }, { it.a }))
     if (list.isEmpty()) {
         Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
-            Text("لا توجد ملاحظات بعد.\nاضغط مطولًا على آية واختر «ملاحظة وتظليل».",
+            Text("لم تكتب شيئًا بعد.\nاضغط مطولًا على آية واختر «وقفة تدبّر» أو «دفتر التدبّر والتظليل»، واكتب تدبّرك وما ستعمل به.",
                 textAlign = TextAlign.Center, color = c.muted, fontSize = 16.sp, lineHeight = 26.sp)
         }
         return
@@ -108,7 +115,12 @@ fun NotesList(prefs: Prefs, c: MushafColors, onGo: (Int, Selection?) -> Unit) {
                 Column(Modifier.weight(1f)) {
                     Text("سورة ${Quran.surahs[n.s - 1].name} · الآية ${n.a.ar()}", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                     if (n.text.isNotBlank()) Text(n.text, fontSize = 14.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                    else Text(Quran.ayahText(n.s, n.a), fontFamily = hafsFamily, fontSize = 15.sp, color = c.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    else if (n.act.isBlank()) Text(Quran.ayahText(n.s, n.a), fontFamily = hafsFamily, fontSize = 15.sp, color = c.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (n.act.isNotBlank()) Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text((if (n.done) "✓ عملتُ بها: " else "نويت: ") + n.act, fontSize = 14.sp, color = c.gharib,
+                            maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                        TextButton(onClick = { prefs.setActDone(n.s, n.a, !n.done) }) { Text(if (n.done) "تراجع" else "عملتُ بها") }
+                    }
                 }
                 IconButton(onClick = { prefs.deleteNote(n.s, n.a) }) { Icon(Icons.Filled.Delete, "حذف", tint = c.muted) }
             }

@@ -16,8 +16,14 @@ enum class ViewMode { PAGE, LARGE, TAJWEED }
 
 data class Bookmark(val page: Int, val s: Int, val a: Int, val time: Long)
 
-/** A personal note / highlight on an ayah. color: 0..4 (see NoteColors), -1 = note without highlight. */
-data class Note(val s: Int, val a: Int, val text: String, val color: Int, val time: Long)
+/**
+ * A personal note / highlight on an ayah. color: 0..4 (see NoteColors), -1 = note without highlight.
+ * [act]: what the reader intends to do with the ayah («دفتر التدبر»); [done] when he did it; [asked]: last follow-up.
+ */
+data class Note(
+    val s: Int, val a: Int, val text: String, val color: Int, val time: Long,
+    val act: String = "", val done: Boolean = false, val asked: Long = 0,
+)
 
 /** A khatma plan: finish the whole Mushaf in [days] days starting at [start]. */
 data class Khatma(val start: Long, val days: Int, val startPage: Int)
@@ -97,20 +103,60 @@ class Prefs(context: Context) {
 
     // ------------------------------------------------------------------ notes & highlights
     var notes by mutableStateOf(readArray("notes") { o ->
-        Note(o.getInt("s"), o.getInt("a"), o.getString("x"), o.getInt("c"), o.getLong("t"))
+        Note(o.getInt("s"), o.getInt("a"), o.getString("x"), o.getInt("c"), o.getLong("t"),
+            o.optString("w"), o.optBoolean("d"), o.optLong("r"))
     }.associateBy { "${it.s}:${it.a}" }); private set
 
     fun note(s: Int, a: Int): Note? = notes["$s:$a"]
 
-    fun saveNote(s: Int, a: Int, text: String, color: Int) {
-        notes = if (text.isBlank() && color < 0) notes - "$s:$a"
-        else notes + ("$s:$a" to Note(s, a, text.trim(), color, System.currentTimeMillis()))
-        writeArray("notes", notes.values.toList()) {
-            JSONObject().put("s", it.s).put("a", it.a).put("x", it.text).put("c", it.color).put("t", it.time)
-        }
+    fun saveNote(s: Int, a: Int, text: String, color: Int, act: String = note(s, a)?.act ?: "") {
+        val old = note(s, a)
+        val keepDone = old != null && old.act == act.trim()
+        notes = if (text.isBlank() && color < 0 && act.isBlank()) notes - "$s:$a"
+        else notes + ("$s:$a" to Note(s, a, text.trim(), color, System.currentTimeMillis(), act.trim(),
+            keepDone && old!!.done, if (keepDone) old!!.asked else 0))
+        saveNotes()
     }
 
-    fun deleteNote(s: Int, a: Int) = saveNote(s, a, "", -1)
+    /** «عملتُ بها» on an intention written in the tadabbur notebook (or undo). */
+    fun setActDone(s: Int, a: Int, done: Boolean) {
+        val n = note(s, a) ?: return
+        notes = notes + ("$s:$a" to n.copy(done = done)); saveNotes()
+    }
+
+    fun markAsked(s: Int, a: Int) {
+        val n = note(s, a) ?: return
+        notes = notes + ("$s:$a" to n.copy(asked = System.currentTimeMillis())); saveNotes()
+    }
+
+    private fun saveNotes() = writeArray("notes", notes.values.toList()) {
+        JSONObject().put("s", it.s).put("a", it.a).put("x", it.text).put("c", it.color).put("t", it.time)
+            .put("w", it.act).put("d", it.done).put("r", it.asked)
+    }
+
+    fun deleteNote(s: Int, a: Int) = saveNote(s, a, "", -1, "")
+
+    // ------------------------------------------------------------------ tadabbur (all optional, from Settings)
+    /** «وقفة تدبّر» in the ayah menu. */
+    var tadabburSheet by mutableStateOf(sp.getBoolean("tdSheet", true)); private set
+    /** «آيات متشابهة» inside the tadabbur sheet. */
+    var showSimilar by mutableStateOf(sp.getBoolean("tdSimilar", true)); private set
+    /** «ردّد الآية»: how many times (0 = until stopped) and the pause between repetitions in seconds. */
+    var tdRepeat by mutableStateOf(sp.getInt("tdRepeat", 5)); private set
+    var tdGap by mutableStateOf(sp.getInt("tdGap", 3)); private set
+    /** A daily notification with «آية اليوم» (the widget's ayah) to reflect on. */
+    var dailyAyahOn by mutableStateOf(sp.getBoolean("tdDaily", false)); private set
+    /** Remind, a few days later, of what the reader wrote he would do with an ayah. */
+    var actFollowUp by mutableStateOf(sp.getBoolean("tdFollow", true)); private set
+    var tadabburMinutes by mutableStateOf(sp.getInt("tdAt", 7 * 60 + 30)); private set      // minutes after midnight
+    fun updateTadabburSheet(v: Boolean) { tadabburSheet = v; sp.edit().putBoolean("tdSheet", v).apply() }
+    fun updateShowSimilar(v: Boolean) { showSimilar = v; sp.edit().putBoolean("tdSimilar", v).apply() }
+    fun updateTdRepeat(v: Int) { tdRepeat = v; sp.edit().putInt("tdRepeat", v).apply() }
+    fun updateTdGap(v: Int) { tdGap = v; sp.edit().putInt("tdGap", v).apply() }
+    fun updateDailyAyah(v: Boolean) { dailyAyahOn = v; sp.edit().putBoolean("tdDaily", v).apply() }
+    fun updateActFollowUp(v: Boolean) { actFollowUp = v; sp.edit().putBoolean("tdFollow", v).apply() }
+    fun updateTadabburMinutes(v: Int) { tadabburMinutes = v; sp.edit().putInt("tdAt", v).apply() }
+    fun todayKey(): String = today()
 
     // ------------------------------------------------------------------ memorisation (hifz)
     var hifzHideFirstWord by mutableStateOf(sp.getBoolean("hifzFirst", false)); private set

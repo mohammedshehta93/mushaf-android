@@ -182,7 +182,7 @@ fun HomeScreen(mp: MuslimPrefs, c: MushafColors, onBack: () -> Unit, onPick: (St
                     Triple("hifz", Icons.Filled.Psychology, "الحفظ والمراجعة"),
                     Triple("khatma", Icons.Filled.Event, "الختمة والورد"),
                     Triple("marks", Icons.Filled.Bookmarks, "العلامات"),
-                    Triple("notes", Icons.Filled.EditNote, "الملاحظات"),
+                    Triple("notes", Icons.Filled.EditNote, "دفتر التدبّر"),
                 ),
                 "الصلاة والعبادات اليومية" to listOf(
                     Triple("prayer", Icons.Filled.AccessTime, "مواقيت الصلاة"),

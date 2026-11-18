@@ -42,6 +42,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.AutoStories
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Bookmarks
@@ -156,7 +157,7 @@ sealed class Overlay {
     object Virtues : Overlay()
     object HadithLibrary : Overlay()
     object HadithCheck : Overlay()
-    object SurahInfo : Overlay()
+    class SurahInfo(val start: Int = 0, val back: Overlay = Home) : Overlay()
     object English : Overlay()
     class Recite(val review: Boolean = false) : Overlay()
     class Prayer(val tab: Int = 0) : Overlay()
@@ -178,6 +179,7 @@ fun App(prefs: Prefs, mp: MuslimPrefs) {
     val spread = config.screenWidthDp > config.screenHeightDp && prefs.twoPagesLandscape && prefs.mode == ViewMode.PAGE
 
     var overlay by remember { mutableStateOf<Overlay>(Overlay.None) }
+    var tadabburFor by remember { mutableStateOf<Selection?>(null) }
     val listenPrefs = remember { com.shehta.mushaf.data.ListenPrefs(context) }
     val readingPrefs = remember { ReadingPrefs(context) }
     var reminder by remember { mutableStateOf<com.shehta.mushaf.data.RItem?>(null) }
@@ -241,6 +243,11 @@ fun App(prefs: Prefs, mp: MuslimPrefs) {
             "prayer" -> overlay = Overlay.Prayer()
             "azkar_morning" -> overlay = Overlay.Azkar(MuslimData.MORNING)
             "azkar_evening" -> overlay = Overlay.Azkar(MuslimData.EVENING)
+            "notes" -> { IndexTabs.request = 4; overlay = Overlay.Index }
+            else -> Regex("tadabbur:(\\d+):(\\d+)").matchEntire(Launch.screen)?.let { m ->
+                val sel = Selection(m.groupValues[1].toInt(), m.groupValues[2].toInt())
+                goTo(Quran.pageOf(sel.s, sel.a), sel); if (prefs.tadabburSheet) tadabburFor = sel
+            }
         }
         Launch.screen = ""
     }
@@ -553,7 +560,7 @@ fun App(prefs: Prefs, mp: MuslimPrefs) {
                         "intentions" -> overlay = Overlay.Intentions
                         "hadiths" -> overlay = Overlay.HadithLibrary
                         "hadithcheck" -> overlay = Overlay.HadithCheck
-                        "surahinfo" -> overlay = Overlay.SurahInfo
+                        "surahinfo" -> overlay = Overlay.SurahInfo()
                         "english" -> overlay = Overlay.English
                         "recite" -> overlay = Overlay.Recite()
                         "review" -> overlay = Overlay.Recite(review = true)
@@ -586,7 +593,7 @@ fun App(prefs: Prefs, mp: MuslimPrefs) {
                 onIntentions = { overlay = Overlay.Intentions })
             Overlay.HadithLibrary -> HadithLibraryScreen(colors, onBack = { overlay = Overlay.Home })
             Overlay.HadithCheck -> HadithCheckScreen(colors, onBack = { overlay = Overlay.Home })
-            Overlay.SurahInfo -> SurahInfoScreen(colors, onBack = { overlay = Overlay.Home }, onGo = { s, a -> goTo(Quran.pageOf(s, a), Selection(s, a)) })
+            is Overlay.SurahInfo -> SurahInfoScreen(colors, o.start, onBack = { overlay = o.back }, onGo = { s, a -> goTo(Quran.pageOf(s, a), Selection(s, a)) })
             is Overlay.Recite -> ReciteScreen(colors, prefs, current, o.review, onBack = { overlay = Overlay.Home })
             Overlay.English -> EnglishScreen(colors, listenPrefs, onBack = { overlay = Overlay.Home },
                 onGo = { s, a -> goTo(Quran.pageOf(s, a), Selection(s, a)) })
@@ -603,6 +610,7 @@ fun App(prefs: Prefs, mp: MuslimPrefs) {
             sel = sel, prefs = prefs, colors = colors,
             onDismiss = { actionFor = null },
             onTafsir = { actionFor = null; overlay = Overlay.Tafsir(sel.s, sel.a) },
+            onTadabbur = { actionFor = null; tadabburFor = sel },
             onMeanings = { actionFor = null; meaningsOf = sel },
             onNote = { actionFor = null; noteFor = sel },
             onPlayFrom = {
@@ -622,9 +630,16 @@ fun App(prefs: Prefs, mp: MuslimPrefs) {
         )
     }
     meaningsOf?.let { sel -> MeaningsSheet(sel, colors, onDismiss = { meaningsOf = null }) }
+    tadabburFor?.let { sel ->
+        TadabburSheet(sel.s, sel.a, prefs, colors, onDismiss = { tadabburFor = null },
+            onTafsir = { tadabburFor = null; overlay = Overlay.Tafsir(sel.s, sel.a) },
+            onSurahInfo = { tadabburFor = null; overlay = Overlay.SurahInfo(sel.s, back = Overlay.None) },
+            onNote = { noteFor = sel },
+            onGo = { s, a -> tadabburFor = null; goTo(Quran.pageOf(s, a), Selection(s, a)) })
+    }
     noteFor?.let { sel -> NoteDialog(sel.s, sel.a, prefs, onDismiss = { noteFor = null }) }
     playerFor?.let { x -> PlayerSheet(prefs, x[0], x[1], onDismiss = { playerFor = null }) }
-    if (showSettings) SettingsSheet(prefs, onDismiss = { showSettings = false })
+    if (showSettings) SettingsSheet(prefs, mp, onDismiss = { showSettings = false })
     if (showView) ViewSheet(prefs, colors, onDismiss = { showView = false })
     if (showShare) ShareAppSheet(onDismiss = { showShare = false })
     if (showMore) MoreSheet(
@@ -677,7 +692,7 @@ private fun MoreSheet(onDismiss: () -> Unit, onPick: (String) -> Unit) {
         Triple("hifz", Icons.Filled.Psychology, "الحفظ والمراجعة"),
         Triple("fiqh", Icons.Filled.Gavel, "تعلّم الفقه"),
         Triple("marks", Icons.Filled.Bookmarks, "العلامات"),
-        Triple("notes", Icons.Filled.EditNote, "الملاحظات"),
+        Triple("notes", Icons.Filled.EditNote, "دفتر التدبّر"),
         Triple("share", Icons.Filled.Share, "شارك التطبيق"),
         Triple("settings", Icons.Filled.Settings, "الإعدادات"),
     )
@@ -769,7 +784,7 @@ private fun MeaningCard(g: Gharib, c: MushafColors, onTafsir: () -> Unit, onClos
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AyahActions(
-    sel: Selection, prefs: Prefs, colors: MushafColors, onDismiss: () -> Unit, onTafsir: () -> Unit, onMeanings: () -> Unit,
+    sel: Selection, prefs: Prefs, colors: MushafColors, onDismiss: () -> Unit, onTafsir: () -> Unit, onTadabbur: () -> Unit, onMeanings: () -> Unit,
     onNote: () -> Unit, onPlayFrom: () -> Unit, onRepeat: () -> Unit, onWordAudio: () -> Unit, onRoot: (String) -> Unit,
     onBookmark: () -> Unit, onCopy: () -> Unit, onShare: () -> Unit,
 ) {
@@ -809,12 +824,14 @@ private fun AyahActions(
                 HorizontalDivider()
             }
             item {
+                if (prefs.tadabburSheet) ListItem(headlineContent = { Text("وقفة تدبّر") }, supportingContent = { Text("مقصد السورة، أسئلة، ترديد، دفتر التدبّر") },
+                    leadingContent = { Icon(Icons.Filled.Lightbulb, null) }, modifier = Modifier.clickableRow(onTadabbur), colors = ic)
                 ListItem(headlineContent = { Text("التفسير") }, leadingContent = { Icon(Icons.Filled.AutoStories, null) }, modifier = Modifier.clickableRow(onTafsir), colors = ic)
                 if (meanings > 0) ListItem(headlineContent = { Text("معاني كلمات الآية (${meanings.ar()})") }, leadingContent = { Icon(Icons.Filled.Translate, null) },
                     modifier = Modifier.clickableRow(onMeanings), colors = ic)
                 ListItem(headlineContent = { Text("استمع من هذه الآية") }, leadingContent = { Icon(Icons.Filled.Headphones, null) }, modifier = Modifier.clickableRow(onPlayFrom), colors = ic)
                 ListItem(headlineContent = { Text("تكرار للحفظ…") }, leadingContent = { Icon(Icons.Filled.Repeat, null) }, modifier = Modifier.clickableRow(onRepeat), colors = ic)
-                ListItem(headlineContent = { Text(if (prefs.note(sel.s, sel.a) != null) "تعديل الملاحظة والتظليل" else "ملاحظة وتظليل") },
+                ListItem(headlineContent = { Text(if (prefs.note(sel.s, sel.a) != null) "تعديل ما كتبته في دفتر التدبّر" else "دفتر التدبّر والتظليل") },
                     leadingContent = { Icon(Icons.Filled.EditNote, null) }, modifier = Modifier.clickableRow(onNote), colors = ic)
                 ListItem(headlineContent = { Text("علامة توقف هنا") }, leadingContent = { Icon(Icons.Filled.Bookmark, null) }, modifier = Modifier.clickableRow(onBookmark), colors = ic)
                 ListItem(headlineContent = { Text("نسخ الآية") }, leadingContent = { Icon(Icons.Filled.ContentCopy, null) }, modifier = Modifier.clickableRow(onCopy), colors = ic)

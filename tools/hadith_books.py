@@ -167,6 +167,9 @@ def excerpt(text, frm=None, to=None):
         if k < 0: raise SystemExit(f"ERROR: excerpt end {to!r} not found in: {text[:80]}")
         b = idx[k + len(q) - 1] + 1
         while b < len(text) and _M.match(text[b]): b += 1          # keep the last letter's diacritics
+        close = re.match(r"\s*([}﴾)])", text[b:])                  # the bracket closing a quote left open by the cut
+        if close and text[a:b].count({"}": "{", "﴾": "﴿", ")": "("}[close.group(1)]) > text[a:b].count(close.group(1)):
+            b += close.end()
     out = text[a:b].strip().strip("،").strip()
     if a > 0 or b < len(text):          # a quote mark / full stop left unpaired by the cut
         out = out.rstrip(" .")

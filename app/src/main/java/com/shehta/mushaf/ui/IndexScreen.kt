@@ -63,7 +63,7 @@ fun IndexScreen(prefs: Prefs, currentPage: Int, onBack: () -> Unit, onGo: (Int, 
     var tab by remember { mutableIntStateOf(if (IndexTabs.request >= 0) IndexTabs.request else 0) }
     LaunchedEffect(Unit) { IndexTabs.request = -1 }
     var filter by remember { mutableStateOf("") }
-    val tabs = listOf("السور", "الأجزاء", "الأحزاب", "العلامات", "الملاحظات")
+    val tabs = listOf("السور", "الأجزاء", "الأحزاب", "العلامات", "التدبّر")
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.fillMaxSize()) {

@@ -504,7 +504,11 @@ def build_reading(D, OUT, sharh_items=None):
             out["en"] = (h["english"].get("narrator", "") + " " + h["english"].get("text", "")).strip()
         return out
 
+    td = cfg["tadabbur"]
     res = {
+        # «وقفة تدبّر» on an ayah: the three questions (wording approved by the project owner) and the hadith of
+        # repeating one ayah all night
+        "tadabbur": {"questions": td["questions"], "repeat": resolve(td["repeat"])},
         "intentions": [dict(resolve(x["ref"]), n=x["t"]) for x in cfg["intentions"]],
         "reminders": [dict(resolve(x["ref"]), h=x["h"]) for x in cfg["reminders"]],
         "virtues": [dict({"title": g["title"], "items": [dict(resolve(r), **({"h": r["h"]} if r.get("h") else {})) for r in g["items"]]},

@@ -166,5 +166,7 @@ def apply(D, OUT, pages, surahs, words_text):
     azkar_check.build(D, OUT)                # adhkar: rulings of the graders, weak additions removed
     import surah_info
     surah_info.build(D, OUT)                 # surah aims and revelation reports (six books, sahih/hasan)
+    import similar
+    similar.build(D, OUT)                    # ayahs sharing a run of words (from the official text only)
     import shutil, os
     shutil.copy(os.path.join(os.path.dirname(os.path.abspath(__file__)), "content", "whatsnew.json"), f"{OUT}/whatsnew.json")

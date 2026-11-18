@@ -32,9 +32,10 @@ import com.shehta.mushaf.data.ar
 
 /** «مقاصد السور وأسباب النزول»: every surah's aims and the revelation reports of its ayahs. */
 @Composable
-fun SurahInfoScreen(c: MushafColors, onBack: () -> Unit, onGo: (Int, Int) -> Unit) {
-    var open by rememberSaveable { mutableStateOf(0) }
-    if (open > 0) { SurahInfoDetail(c, open, onBack = { open = 0 }, onGo = onGo); return }
+fun SurahInfoScreen(c: MushafColors, start: Int = 0, onBack: () -> Unit, onGo: (Int, Int) -> Unit) {
+    var open by rememberSaveable { mutableStateOf(start) }
+    // opened on one surah (from «وقفة تدبّر»): back returns to where the reader was
+    if (open > 0) { SurahInfoDetail(c, open, onBack = { if (start > 0) onBack() else open = 0 }, onGo = onGo); return }
     var q by rememberSaveable { mutableStateOf("") }
     val shown = remember(q) {
         val n = ArabicText.normalize(q)
@@ -50,7 +51,7 @@ fun SurahInfoScreen(c: MushafColors, onBack: () -> Unit, onGo: (Int, Int) -> Uni
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("${s.ar()}. سورة ${Quran.surahs[s - 1].name}", fontWeight = FontWeight.Bold, color = c.gharib, modifier = Modifier.weight(1f))
                         val n = info?.nuzul?.size ?: 0
-                        if (n > 0) Text("${n.ar()} آية لها سبب نزول", fontSize = 12.sp, color = c.muted)
+                        if (n > 0) Text("${n.ar()} آية ورد في نزولها شيء", fontSize = 12.sp, color = c.muted)
                     }
                     info?.aims?.firstOrNull()?.let { Text(it, fontSize = 14.sp, lineHeight = 22.sp, maxLines = 2, overflow = TextOverflow.Ellipsis) }
                 }

@@ -30,7 +30,7 @@ import java.io.File
 object ShareApp {
     val downloadUrl get() = "https://github.com/${BuildConfig.UPDATE_REPO}/releases/latest"
 
-    private const val PITCH = "تطبيق «المصحف» مجاني وبدون إعلانات: مصحف المدينة بخط مجمع الملك فهد، معاني الكلمات، تفسير ابن كثير، " +
+    private const val PITCH = "تطبيق «تِبيان» مجاني وبدون إعلانات: مصحف المدينة بخط مجمع الملك فهد، معاني الكلمات، تفسير ابن كثير، " +
         "التلاوة، وضع الحفظ، الختمة، التجويد الملوّن، وتعلّم الفقه."
 
     fun shareLink(context: Context) {
@@ -44,7 +44,7 @@ object ShareApp {
         Thread {
             try {
                 val dir = File(context.cacheDir, "updates").apply { mkdirs() }
-                val out = File(dir, "Mushaf-${BuildConfig.VERSION_NAME}.apk")
+                val out = File(dir, "Tibyan-${BuildConfig.VERSION_NAME}.apk")
                 if (!out.exists()) File(context.applicationInfo.sourceDir).copyTo(out, overwrite = true)
                 val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", out)
                 val i = Intent(Intent.ACTION_SEND).setType("application/vnd.android.package-archive")

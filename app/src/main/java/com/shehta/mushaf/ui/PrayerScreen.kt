@@ -338,7 +338,7 @@ private fun AlarmHealth(context: Context, c: MushafColors) {
                 }
             }) { Text("استثناء من توفير البطارية") }
         }
-        Text("في هواتف Honor وHuawei أيضًا: الإعدادات ← البطارية ← تشغيل التطبيقات ← «المصحف» ← إدارة يدوية، وفعّل الخيارات الثلاثة.",
+        Text("في هواتف Honor وHuawei أيضًا: الإعدادات ← البطارية ← تشغيل التطبيقات ← «تِبيان» ← إدارة يدوية، وفعّل الخيارات الثلاثة.",
             fontSize = 12.sp, color = c.muted, lineHeight = 19.sp, modifier = Modifier.padding(top = 4.dp))
         TextButton(onClick = {
             PrayerAlarms.scheduleTest(context)

@@ -55,7 +55,7 @@ export async function openSurahInfo(start = 0) {
         const n = normalize(q || '');
         $('[data-list]', body).innerHTML = meta.surahs.map((m, i) => i + 1).filter((s) => !n || normalize(meta.surahs[s - 1].name).includes(n) || String(s) === q.trim())
           .map((s) => { const x = d.surahs[s]; const c = Object.keys(x.nuzul || {}).length;
-            return `<button class="card" style="display:block;width:100%;text-align:right" data-s="${s}"><div class="row"><b class="grow" style="color:var(--gharib)">${ar(s)}. سورة ${esc(meta.surahs[s - 1].name)}</b>${c ? `<span class="muted">${ar(c)} آية لها سبب نزول</span>` : ''}</div>
+            return `<button class="card" style="display:block;width:100%;text-align:right" data-s="${s}"><div class="row"><b class="grow" style="color:var(--gharib)">${ar(s)}. سورة ${esc(meta.surahs[s - 1].name)}</b>${c ? `<span class="muted">${ar(c)} آية ورد في نزولها شيء</span>` : ''}</div>
               <div style="line-height:1.7;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${words(x.aims[0] || '')}</div></button>`; }).join('');
       };
       $('[data-q]', body).oninput = (e) => draw(e.target.value);

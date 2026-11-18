@@ -39,7 +39,7 @@ def main():
     # data (only what the web version uses)
     data = os.path.join(OUT, "data")
     os.makedirs(data)
-    for f in ["meta.json", "gharib.json", "text.json", "reciters.json", "reading.json", "whatsnew.json", "surahs_info.json"]:
+    for f in ["meta.json", "gharib.json", "text.json", "reciters.json", "reading.json", "whatsnew.json", "surahs_info.json", "similar.json"]:
         shutil.copy(os.path.join(A, f), data)
     for d in ["pages", "tafsir", "muslim", "listen", "learn", "english", "hadith"]:
         shutil.copytree(os.path.join(A, d), os.path.join(data, d))
@@ -63,7 +63,7 @@ def main():
         f = TTFont(src); f.flavor = "woff2"; f.save(f"{fonts}/{dst}")
 
     # files for "download the Mushaf for offline use" (tafsir stays on-demand)
-    offline = ["data/reading.json", "data/learn/library.json", "data/learn/tajweed.json", "data/gharib.json", "data/text.json", "data/muslim/azkar.json", "data/muslim/hadith_daily.json", "data/muslim/names.json"]
+    offline = ["data/reading.json", "data/learn/library.json", "data/learn/tajweed.json", "data/gharib.json", "data/text.json", "data/muslim/azkar.json", "data/muslim/hadith_daily.json", "data/muslim/names.json", "data/similar.json", "data/surahs_info.json"]
     offline += [f"data/pages/{n}.json" for n in range(1, 605)] + [f"fonts/p{n}.woff2" for n in range(1, 605)]
     for f in offline:
         if not os.path.exists(os.path.join(OUT, f)): raise SystemExit(f"ERROR: missing {f}")

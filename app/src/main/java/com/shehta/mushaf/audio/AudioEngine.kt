@@ -51,6 +51,8 @@ data class PlayRequest(
     val repeatAyah: Int,        // 0 = endless
     val repeatRange: Int,       // 0 = endless
     val speed: Float,
+    /** Pause between repetitions, for reflection («ردّد الآية»); 0 = none. */
+    val gapMs: Long = 0,
 )
 
 /**
@@ -62,6 +64,8 @@ object AudioEngine {
     lateinit var player: ExoPlayer; private set
     private val scope = MainScope()
     private var ticker: Job? = null
+    private var gapJob: Job? = null
+    private var gapMs = 0L
     var state by mutableStateOf(AudioState()); private set
 
     val ready get() = this::player.isInitialized
@@ -78,7 +82,16 @@ object AudioEngine {
             .build()
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) { refresh() }
-            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) { refresh() }
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                // «ردّد الآية»: a short silence before each repetition
+                if (gapMs > 0 && player.isPlaying && (reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT ||
+                        reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO)) {
+                    player.pause()
+                    gapJob?.cancel()
+                    gapJob = scope.launch { delay(gapMs); gapJob = null; player.play() }
+                }
+                refresh()
+            }
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_ENDED) stop() else refresh()
             }
@@ -104,7 +117,7 @@ object AudioEngine {
         return MediaItem.Builder()
             .setUri(uri(r, s, a))
             .setMediaId(if (basmalaOf > 0) "b:$basmalaOf" else "$s:$a")
-            .setMediaMetadata(MediaMetadata.Builder().setTitle(title).setArtist(r.name).setAlbumTitle("المصحف").build())
+            .setMediaMetadata(MediaMetadata.Builder().setTitle(title).setArtist(r.name).setAlbumTitle("تِبيان").build())
             .build()
     }
 
@@ -138,6 +151,7 @@ object AudioEngine {
             else -> Player.REPEAT_MODE_OFF
         }
         player.playbackParameters = PlaybackParameters(req.speed)
+        gapJob?.cancel(); gapMs = req.gapMs
         player.prepare()
         player.play()
         state = AudioState(active = true, playing = true, s = ayahs[0][0], a = ayahs[0][1], reciter = r.id)
@@ -158,6 +172,7 @@ object AudioEngine {
         startService()
         player.setMediaItem(item, if (live) C.TIME_UNSET else startMs)
         player.repeatMode = Player.REPEAT_MODE_OFF
+        gapJob?.cancel(); gapMs = 0
         player.playbackParameters = PlaybackParameters(1f)
         player.prepare()
         player.play()
@@ -173,11 +188,14 @@ object AudioEngine {
 
     fun seekBy(ms: Long) { if (ready) player.seekTo((player.currentPosition + ms).coerceAtLeast(0)) }
 
-    fun toggle() { if (player.isPlaying) player.pause() else { if (player.playbackState == Player.STATE_IDLE) player.prepare(); player.play() } }
-    fun next() { if (player.hasNextMediaItem()) player.seekToNextMediaItem() }
+    fun toggle() {
+        if (gapJob?.isActive == true) { gapJob?.cancel(); refresh(); return }     // «pause» during the silence: stay paused
+        if (player.isPlaying) player.pause() else { if (player.playbackState == Player.STATE_IDLE) player.prepare(); player.play() } }
+    fun next() { gapJob?.cancel(); if (player.hasNextMediaItem()) player.seekToNextMediaItem() }
     fun previous() { if (player.hasPreviousMediaItem()) player.seekToPreviousMediaItem() else player.seekTo(0) }
 
     fun stop() {
+        gapJob?.cancel(); gapMs = 0
         if (state.stream && player.playbackState == Player.STATE_ENDED) state.streamUrl.takeIf { it.isNotEmpty() }?.let { positionSaver?.invoke(it, 0L) }
         else saveStreamPosition()
         positionSaver = null
@@ -203,10 +221,10 @@ object AudioEngine {
         if (id.startsWith("x:")) return
         if (id.startsWith("b:")) {
             val s = id.removePrefix("b:").toInt()
-            state = state.copy(playing = player.isPlaying, s = s, a = 1, word = 0, basmala = true, error = null)
+            state = state.copy(playing = player.isPlaying || gapJob?.isActive == true, s = s, a = 1, word = 0, basmala = true, error = null)
         } else {
             val (s, a) = id.split(":").map { it.toInt() }
-            state = state.copy(playing = player.isPlaying, s = s, a = a, basmala = false, error = null)
+            state = state.copy(playing = player.isPlaying || gapJob?.isActive == true, s = s, a = a, basmala = false, error = null)
         }
     }
 

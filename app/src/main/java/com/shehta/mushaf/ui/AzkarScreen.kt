@@ -90,20 +90,34 @@ private fun Tile(title: String, c: MushafColors, modifier: Modifier, onClick: ()
 private fun ZikrList(title: String, mp: MuslimPrefs, c: MushafColors, onBack: () -> Unit) {
     val cat = MuslimData.category(title) ?: return
     val haptic = LocalHapticFeedback.current
-    val doneCount = cat.items.indices.count { mp.azkarCount(title, it, cat.items[it].count) >= cat.items[it].count }
+    val isDone = { i: Int -> mp.azkarCount(title, i, cat.items[i].count) >= cat.items[i].count }
+    val doneCount = cat.items.indices.count(isDone)
+    var showDone by remember(title) { mutableStateOf(false) }
+    // with «إخفاء الذكر بعد إتمامه» a completed dhikr leaves the list, like a task ticked off
+    val shown = cat.items.indices.filter { !mp.azkarHideDone || showDone || !isDone(it) }
     ScreenScaffold(title, c, onBack, subtitle = "أنجزت ${doneCount.ar()} من ${cat.items.size.ar()}", actions = {
-        TextButton(onClick = { mp.azkarResetCategory(title) }) { Text("من جديد", color = c.onBar) }
+        TextButton(onClick = { mp.azkarResetCategory(title); showDone = false }) { Text("من جديد", color = c.onBar) }
     }) {
         LinearProgressIndicator(progress = { doneCount.toFloat() / cat.items.size }, modifier = Modifier.fillMaxWidth())
         LazyColumn(contentPadding = PaddingValues(12.dp)) {
-            items(cat.items.size) { i ->
+            if (doneCount == cat.items.size) item(key = "all") {
+                Surface(shape = RoundedCornerShape(18.dp), color = c.ayahHighlight, modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                    Column(Modifier.padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("✓", fontSize = 34.sp, color = c.gharib, fontWeight = FontWeight.Bold)
+                        Text("أتممتَ «$title»", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Text("تعود من جديد غدًا", fontSize = 13.sp, color = c.muted)
+                    }
+                }
+            }
+            items(shown.size, key = { shown[it] }) { k ->
+                val i = shown[k]
                 val z = cat.items[i]
                 val n = mp.azkarCount(title, i, z.count)
                 val done = n >= z.count
                 Surface(
                     shape = RoundedCornerShape(18.dp), color = if (done) c.ayahHighlight else c.frameFill,
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp).clickable(enabled = !done) {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    modifier = Modifier.animateItem().fillMaxWidth().padding(vertical = 6.dp).clickable(enabled = !done) {
+                        haptic.performHapticFeedback(if (n + 1 >= z.count) HapticFeedbackType.LongPress else HapticFeedbackType.TextHandleMove)
                         mp.azkarTap(title, i)
                     },
                 ) {
@@ -119,7 +133,15 @@ private fun ZikrList(title: String, mp: MuslimPrefs, c: MushafColors, onBack: ()
                     }
                 }
             }
-            item { Text("اضغط على الذِّكر بعد قوله؛ يُعاد العدّاد كل يوم تلقائيًا.", fontSize = 12.sp, color = c.muted, modifier = Modifier.padding(8.dp)) }
+            if (mp.azkarHideDone && doneCount > 0) item(key = "toggle") {
+                TextButton(onClick = { showDone = !showDone }, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (showDone) "إخفاء ما أتممته" else "عرض ما أتممته (${doneCount.ar()})")
+                }
+            }
+            item(key = "hint") {
+                Text(if (mp.azkarHideDone) "اضغط على الذِّكر بعد قوله؛ يختفي إذا أتممت عدده، ويعود كل يوم. (يمكن إيقاف الإخفاء من الإعدادات)"
+                    else "اضغط على الذِّكر بعد قوله؛ يُعاد العدّاد كل يوم تلقائيًا.", fontSize = 12.sp, color = c.muted, modifier = Modifier.padding(8.dp))
+            }
         }
     }
 }

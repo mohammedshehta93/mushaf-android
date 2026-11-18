@@ -62,7 +62,7 @@ class AyahWidget : AppWidgetProvider() {
             val v = RemoteViews(context.packageName, R.layout.widget_ayah)
             v.setImageViewBitmap(R.id.w_ayah, bmp)
             v.setTextViewText(R.id.w_ref, "سورة ${Quran.surahs[s - 1].name} · ${a.ar()}")
-            v.setOnClickPendingIntent(R.id.w_root, openPage(context, Quran.pageOf(s, a), 21))
+            v.setOnClickPendingIntent(R.id.w_root, openTadabbur(context, s, a))
             manager.updateAppWidget(id, v)
         }
     }
@@ -89,6 +89,13 @@ class AyahWidget : AppWidgetProvider() {
         }
     }
 }
+
+/** «آية اليوم»: opens the ayah in the Mushaf with its «وقفة تدبّر» (when that is on in Settings). */
+private fun openTadabbur(context: Context, s: Int, a: Int): PendingIntent = PendingIntent.getActivity(
+    context, 21, Intent(context, MainActivity::class.java).putExtra(MainActivity.EXTRA_SCREEN, "tadabbur:$s:$a")
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+)
 
 private fun openPage(context: Context, page: Int, req: Int): PendingIntent = PendingIntent.getActivity(
     context, req, Intent(context, MainActivity::class.java).putExtra(MainActivity.EXTRA_PAGE, page)

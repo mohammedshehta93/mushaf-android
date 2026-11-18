@@ -46,10 +46,19 @@ import com.shehta.mushaf.data.PaperTheme
 import com.shehta.mushaf.data.Prefs
 import com.shehta.mushaf.data.ViewMode
 import com.shehta.mushaf.update.Updater
+import android.Manifest
+import android.os.Build
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberTimePickerState
+import com.shehta.mushaf.data.MuslimPrefs
+import com.shehta.mushaf.reminder.TadabburReminder
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsSheet(prefs: Prefs, onDismiss: () -> Unit) {
+fun SettingsSheet(prefs: Prefs, mp: MuslimPrefs, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
@@ -86,6 +95,10 @@ fun SettingsSheet(prefs: Prefs, onDismiss: () -> Unit) {
                 Label("النوايا والتدبّر")
                 IntentionOptions(mushafColors(prefs.theme), rp)
             }
+            TadabburOptions(prefs)
+
+            Label("الأذكار")
+            Toggle("إخفاء الذِّكر بعد إتمام عدده (يرجع كل يوم)", mp.azkarHideDone) { mp.updateAzkarHideDone(it) }
 
             Label("طريقة العرض")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -173,6 +186,59 @@ fun SettingsSheet(prefs: Prefs, onDismiss: () -> Unit) {
                 fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 19.sp,
             )
         }
+    }
+}
+
+/** Everything of «التدبّر» is optional; one place to turn each part on or off. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TadabburOptions(prefs: Prefs) {
+    val context = LocalContext.current
+    var showTime by remember { mutableStateOf(false) }
+    var pendingOn by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { pendingOn?.invoke(); pendingOn = null }
+    fun withPermission(on: Boolean, apply: () -> Unit) {
+        if (on && Build.VERSION.SDK_INT >= 33) { pendingOn = apply; permission.launch(Manifest.permission.POST_NOTIFICATIONS) } else apply()
+    }
+    Toggle("«وقفة تدبّر» في قائمة الآية", prefs.tadabburSheet) { prefs.updateTadabburSheet(it) }
+    if (prefs.tadabburSheet) Toggle("إظهار الآيات المتشابهة الألفاظ فيها", prefs.showSimilar) { prefs.updateShowSimilar(it) }
+    Text("ترديد الآية: عدد المرات", fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        listOf(3, 5, 10, 0).forEach { v ->
+            FilterChip(selected = prefs.tdRepeat == v, onClick = { prefs.updateTdRepeat(v) }, label = { Text(if (v == 0) "حتى أوقفه" else v.ar()) })
+        }
+    }
+    Text("وقفة صامتة بين كل ترديد", fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        listOf(0, 3, 5, 10).forEach { v ->
+            FilterChip(selected = prefs.tdGap == v, onClick = { prefs.updateTdGap(v) }, label = { Text(if (v == 0) "بدون" else "${v.ar()} ث") })
+        }
+    }
+    Toggle("إشعار «آية اليوم» للتدبّر", prefs.dailyAyahOn) { on ->
+        withPermission(on) { prefs.updateDailyAyah(on); TadabburReminder.schedule(context, prefs) }
+    }
+    Toggle("تذكيري بما نويت العمل به من دفتر التدبّر", prefs.actFollowUp) { on ->
+        withPermission(on) { prefs.updateActFollowUp(on); TadabburReminder.schedule(context, prefs) }
+    }
+    if (prefs.dailyAyahOn || prefs.actFollowUp) {
+        val h = prefs.tadabburMinutes / 60; val m = prefs.tadabburMinutes % 60
+        OutlinedButton(onClick = { showTime = true }) {
+            Text("وقت الإشعار: ${String.format(Locale.US, "%02d:%02d", if (h % 12 == 0) 12 else h % 12, m)} ${if (h < 12) "صباحًا" else "مساءً"}")
+        }
+    }
+    if (showTime) {
+        val st = rememberTimePickerState(prefs.tadabburMinutes / 60, prefs.tadabburMinutes % 60, false)
+        AlertDialog(
+            onDismissRequest = { showTime = false },
+            title = { Text("وقت إشعار التدبّر") },
+            text = { TimePicker(state = st) },
+            confirmButton = {
+                TextButton(onClick = {
+                    prefs.updateTadabburMinutes(st.hour * 60 + st.minute); TadabburReminder.schedule(context, prefs); showTime = false
+                }) { Text("حفظ") }
+            },
+            dismissButton = { TextButton(onClick = { showTime = false }) { Text("إلغاء") } },
+        )
     }
 }
 

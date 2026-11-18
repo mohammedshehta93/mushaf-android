@@ -1,8 +1,9 @@
-// المصحف — web version (iPhone / any browser). Same data and fonts as the Android app.
+// تِبيان — web version (iPhone / any browser). Same data and fonts as the Android app.
 import { $, $$, ar, esc, store, json, font, loadMeta, normalize, toast, ui, isIOS, standalone, library } from './core.js';
 import { openHome, prayerChip } from './tools.js';
 import { startReading, intentionOptionsHtml, handleIntentionOption, whatsNew } from './extra.js';
 import { nuzulHtml, wireFull } from './surahs.js';
+import { openTadabbur, noteSheet, tadabburOptionsHtml, handleTadabburOption } from './tadabbur.js';
 
 const PAGES = 604;
 // QCF V2 (the current Madinah print). meta.maxLine = widest line of the whole Mushaf at size 100 (measured at build).
@@ -216,9 +217,11 @@ async function onLongPress(target) {
   ui.onSheetClose = () => { selection = null; decorate(); };
   const sh = ui.sheet(`<div style="font-weight:700">سورة ${esc(meta.surahs[s - 1].name)} · الآية ${ar(a)}</div>
     <div class="quran" style="max-height:30vh;overflow:auto">${esc(text)} ${ar(a)}</div>
+    ${store.get('tdSheet', true) ? '<button class="item" data-a="tad"><span class="ic">💡</span><span class="grow">وقفة تدبّر<br><span class="muted">مقصد السورة، أسئلة، ترديد، دفتر التدبّر</span></span></button>' : ''}
     <button class="item" data-a="taf"><span class="ic">📖</span>التفسير</button>
     ${meanings.length ? `<button class="item" data-a="mean"><span class="ic">💬</span>معاني كلمات الآية (${ar(meanings.length)})</button>` : ''}
     <button class="item" data-a="play"><span class="ic">🎧</span>استمع من هذه الآية</button>
+    <button class="item" data-a="note"><span class="ic">📝</span>${store.get('notes', {})[`${s}:${a}`] ? 'تعديل ما كتبته في دفتر التدبّر' : 'اكتب في دفتر التدبّر'}</button>
     <button class="item" data-a="mark"><span class="ic">🔖</span>علامة توقف هنا</button>
     <button class="item" data-a="copy"><span class="ic">📋</span>نسخ الآية</button>
     <button class="item" data-a="share"><span class="ic">↗</span>مشاركة الآية</button>`);
@@ -227,6 +230,8 @@ async function onLongPress(target) {
     const b = e.target.closest('[data-a]'); if (!b) return;
     const act = b.dataset.a;
     if (act === 'taf') { ui.closeSheet(); openTafsir(s, a); }
+    if (act === 'tad') { ui.closeSheet(); openTadabbur(s, a); }
+    if (act === 'note') noteSheet(s, a);
     if (act === 'mean') ui.sheet(`<div style="font-weight:700;margin-bottom:6px">معاني كلمات الآية ${ar(a)}</div>` +
       meanings.map((x) => `<div style="padding:8px 0;border-bottom:1px solid rgba(128,128,128,.15)"><div class="quran" style="color:var(--gharib)">${esc(x[2])}</div><div style="font-size:17px;line-height:1.6">${esc(x[3])}</div></div>`).join(''));
     if (act === 'play') { ui.closeSheet(); player.play(s, a); }
@@ -346,9 +351,17 @@ const player = {
       if (k === 1 && s !== 1 && s !== 9) this.queue.push({ s, a: 1, basmala: true });
       for (let r = 0; r < rep; r++) this.queue.push({ s, a: k });
     }
+    this.gap = 0; this.endless = false;
+    this.i = 0; this.start();
+  },
+  /** «ردّد الآية»: one ayah [times] times (0 = until stopped) with a silent pause of [gap] ms between repetitions. */
+  repeatOne(s, a, times, gap) {
+    this.queue = []; for (let r = 0; r < Math.max(1, times); r++) this.queue.push({ s, a });
+    this.gap = gap; this.endless = times <= 0;
     this.i = 0; this.start();
   },
   start() {
+    clearTimeout(this.waiting); this.waiting = null;
     this.cur = this.queue[this.i];
     if (!this.cur) return this.stop();
     const r = this.reciter();
@@ -361,17 +374,25 @@ const player = {
     if (!this.cur.basmala && store.get('follow', true)) { const p = pageOf(this.cur.s, this.cur.a); if (p !== current) goTo(p); }
     decorate();
     if ('mediaSession' in navigator) {
-      navigator.mediaSession.metadata = new MediaMetadata({ title: $('#pl-title').textContent, artist: r.name, album: 'المصحف' });
+      navigator.mediaSession.metadata = new MediaMetadata({ title: $('#pl-title').textContent, artist: r.name, album: 'تِبيان' });
     }
   },
   next() { if (this.i < this.queue.length - 1) { this.i++; this.start(); } },
   prev() { if (this.i > 0) { this.i--; this.start(); } },
-  toggle() { if (this.audio.paused) this.audio.play(); else this.audio.pause(); },
-  stop() { this.audio.pause(); this.queue = []; this.cur = null; $('#player').classList.add('hidden'); decorate(); },
+  toggle() {
+    if (this.waiting) { clearTimeout(this.waiting); this.waiting = null; $('#pl-toggle').textContent = '▶'; return; }   // pause during the silence
+    if (this.audio.paused) this.audio.play(); else this.audio.pause();
+  },
+  stop() { clearTimeout(this.waiting); this.waiting = null; this.audio.pause(); this.queue = []; this.cur = null; $('#player').classList.add('hidden'); decorate(); },
 };
-player.audio.addEventListener('ended', () => { if (player.i < player.queue.length - 1) { player.i++; player.start(); } else player.stop(); });
+player.audio.addEventListener('ended', () => {
+  const more = player.i < player.queue.length - 1 || player.endless;
+  const go = () => { if (player.i < player.queue.length - 1) player.i++; player.start(); };
+  if (!more) return player.stop();
+  if (player.gap) { player.waiting = setTimeout(go, player.gap); $('#pl-toggle').textContent = '⏸'; } else go();
+});
 player.audio.addEventListener('play', () => ($('#pl-toggle').textContent = '⏸'));
-player.audio.addEventListener('pause', () => ($('#pl-toggle').textContent = '▶'));
+player.audio.addEventListener('pause', () => { if (!player.waiting) $('#pl-toggle').textContent = '▶'; });
 player.audio.addEventListener('error', () => { if (player.cur) toast('تعذّر تشغيل التلاوة — تحقق من الاتصال'); });
 $('#pl-next').onclick = () => player.next(); $('#pl-prev').onclick = () => player.prev();
 $('#pl-toggle').onclick = () => player.toggle(); $('#pl-stop').onclick = () => player.stop();
@@ -410,6 +431,7 @@ function openSettings() {
     <div class="muted" style="margin-top:10px">حجم خط الصفحة</div>
     <div class="chips">${FONT_NAMES.map((n, i) => `<button class="chip ${store.get('fontStep2', 0) === i ? 'on' : ''}" data-fs="${i}">${n}</button>`).join('')}</div>
     ${intentionOptionsHtml()}
+    ${tadabburOptionsHtml()}
     <button class="item" data-t="colored"><span class="ic">${store.get('colored', true) ? '☑' : '☐'}</span>تلوين الكلمات الغريبة (اضغط عليها لمعرفة المعنى)</button>
     <button class="item" data-t="follow"><span class="ic">${store.get('follow', true) ? '☑' : '☐'}</span>تقليب الصفحات مع التلاوة</button>
     <button class="item" data-a="offline"><span class="ic">⬇</span><span class="grow">تنزيل المصحف للاستخدام بدون إنترنت<br><span class="muted" data-off>${store.get('offline') ? 'تم التنزيل ✓' : 'حوالي ٢٥ ميجا'}</span></span></button>
@@ -417,7 +439,7 @@ function openSettings() {
     <button class="item" data-a="share"><span class="ic">↗</span>شارك التطبيق</button>
     <p class="muted" style="line-height:1.7">المصادر: صفحات وخطوط مصحف المدينة — مجمع الملك فهد لطباعة المصحف الشريف (رواية حفص). معاني الكلمات: «المُيسَّر في غريب القرآن». التفسير: ابن كثير. التلاوات: everyayah.com. الأذكار: حصن المسلم.</p>`);
   sh.onclick = async (e) => {
-    if (handleIntentionOption(e)) return openSettings();
+    if (handleIntentionOption(e) || handleTadabburOption(e)) return openSettings();
     const fs = e.target.closest('[data-fs]');
     if (fs) { store.set('fontStep2', +fs.dataset.fs); window.dispatchEvent(new Event('resize')); openSettings(); return; }
     const t = e.target.closest('[data-theme],[data-t],[data-a]'); if (!t) return;
@@ -431,8 +453,8 @@ function openSettings() {
 
 export function shareApp() {
   const url = location.origin + location.pathname;
-  const text = 'تطبيق «المصحف» مجاني وبدون إعلانات: مصحف المدينة بخط مجمع الملك فهد، معاني الكلمات، التفسير، التلاوة، مواقيت الصلاة والأذكار.';
-  if (navigator.share) navigator.share({ title: 'المصحف', text, url }).catch(() => {});
+  const text = 'تطبيق «تِبيان» مجاني وبدون إعلانات: مصحف المدينة بخط مجمع الملك فهد، معاني الكلمات، التفسير، التلاوة، مواقيت الصلاة والأذكار.';
+  if (navigator.share) navigator.share({ title: 'تِبيان', text, url }).catch(() => {});
   else { navigator.clipboard?.writeText(`${text}\n${url}`); toast('تم نسخ الرابط'); }
 }
 
@@ -492,10 +514,10 @@ function showInstall(force = false) {
   if (standalone || (!force && store.get('installHintShown'))) return;
   store.set('installHintShown', true);
   ui.sheet(isIOS
-    ? `<div style="font-weight:700;font-size:18px">ثبّت «المصحف» على الآيفون</div>
+    ? `<div style="font-weight:700;font-size:18px">ثبّت «تِبيان» على الآيفون</div>
        <ol style="line-height:2;font-size:16px"><li>افتح الرابط من <b>Safari</b>.</li><li>اضغط زر <b>المشاركة</b> (المربع والسهم ⬆) أسفل الشاشة.</li>
        <li>اختر <b>«إضافة إلى الشاشة الرئيسية»</b> ثم <b>«إضافة»</b>.</li></ol><p class="muted">سيظهر كتطبيق ويفتح ملء الشاشة.</p>`
-    : `<div style="font-weight:700;font-size:18px">ثبّت «المصحف»</div>
+    : `<div style="font-weight:700;font-size:18px">ثبّت «تِبيان»</div>
        <p style="line-height:1.8">من قائمة المتصفح (⋮) اختر <b>«تثبيت التطبيق»</b> أو <b>«إضافة إلى الشاشة الرئيسية»</b>.<br>لأجهزة أندرويد يتوفر أيضًا تطبيق كامل بالأذان والإشعارات.</p>`);
 }
 
@@ -520,7 +542,7 @@ window.addEventListener('resize', () => {
   window._rz = setTimeout(() => { $$('.page[data-state="done"]', pager).forEach(unrender); ensureAround(current); pageEl(current).scrollIntoView({ inline: 'start' }); }, 200);
 });
 
-export const app = { stopAudio: () => { if (player.cur) player.stop(); }, goTo, openIndex, openSearch, openTafsir, openListen, openSettings, shareApp, current: () => current, meta: () => meta };
+export const app = { pageOf: (s, a) => pageOf(s, a), repeatAyah: (s, a, times, gap) => player.repeatOne(s, a, times, gap), stopAudio: () => { if (player.cur) player.stop(); }, goTo, openIndex, openSearch, openTafsir, openListen, openSettings, shareApp, current: () => current, meta: () => meta };
 
 (async function init() {
   applyTheme();

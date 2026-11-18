@@ -27,6 +27,25 @@ def ensure_fonttools():
         import subprocess
         subprocess.check_call([sys.executable, "-m", "pip", "install", "--quiet", "fonttools", "brotli"])
 
+def dehint(f):
+    """Remove the TrueType hinting programs. The page fonts of pages 1–7, 11–16, 256 and 270 carry hinting instructions that
+    Android's font engine runs at the page's text size and draws as broken pieces of letters; the other pages have
+    none. The outlines and advance widths are unchanged, so the page looks exactly the same."""
+    if "glyf" in f:
+        glyf = f["glyf"]
+        for name in f.getGlyphOrder():
+            g = glyf[name]
+            if hasattr(g, "program"):
+                from fontTools.ttLib.tables import ttProgram
+                g.program = ttProgram.Program(); g.program.fromBytecode(b"")
+    for t in ("fpgm", "prep", "cvt ", "hdmx", "VDMX", "LTSH"):
+        if t in f: del f[t]
+    if "maxp" in f and hasattr(f["maxp"], "maxSizeOfInstructions"):
+        m = f["maxp"]
+        m.maxSizeOfInstructions = 0; m.maxFunctionDefs = 0; m.maxInstructionDefs = 0; m.maxStackElements = 0
+        m.maxTwilightPoints = 0; m.maxStorage = 0; m.maxZones = 1
+
+
 RAW = "https://raw.githubusercontent.com"
 LAYOUT = RAW + "/zonetecde/mushaf-layout/421e9eaa991897ecd50d7abb79160651a45976d3"     # pinned: data must not change under us
 QPC = RAW + "/mustafa0x/qpc-fonts/master"
@@ -101,12 +120,14 @@ def main():
     max_line = 0.0
     for p in range(1, 605):
         ttf = f"{D}/ttf2/p{p}.ttf"
-        if not os.path.exists(ttf):
+        if not os.path.exists(ttf) or not os.path.exists(ttf + ".unhinted"):
             from fontTools.ttLib import TTFont
             f = TTFont(f"{D}/fonts2/p{p:03d}.woff2"); f.flavor = None
             for t in ("DSIG",):
                 if t in f: del f[t]
+            dehint(f)
             f.save(ttf)
+            open(ttf + ".unhinted", "w").close()
         adv = layout_v2.load_font_metrics(ttf)
         d = json.load(open(f"{D}/layout2/page-{p:03d}.json"))
         if d["page"] != p: fail(f"page mismatch {p}")

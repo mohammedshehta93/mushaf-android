@@ -56,14 +56,21 @@ def main():
     # fonts: the QCF V2 page fonts are already WOFF2 (prepared by prepare_data.py); the official Hafs font and the
     # basmala font are compressed here
     fonts = os.path.join(OUT, "fonts"); os.makedirs(fonts)
-    for n in range(1, 605):
-        shutil.copy(f"{D}/fonts2/p{n:03d}.woff2", f"{fonts}/p{n}.woff2")
     from fontTools.ttLib import TTFont
+    sys.path.insert(0, here)
+    from prepare_data import dehint
+    for n in range(1, 605):
+        # without the TrueType hinting programs (pages 1–16 carry broken ones; see prepare_data.dehint)
+        f = TTFont(f"{D}/fonts2/p{n:03d}.woff2")
+        if "gasp" not in f:          # the hinted fonts (pages 1–7, 11–16, 256, 270) are the ones without a gasp table
+            dehint(f); f.flavor = "woff2"; f.save(f"{fonts}/p{n}.woff2")
+        else:
+            shutil.copy(f"{D}/fonts2/p{n:03d}.woff2", f"{fonts}/p{n}.woff2")
     for src, dst in ((f"{D}/fonts2/bsml.ttf", "bsml.woff2"), (f"{D}/fonts2/hafs_v22.ttf", "hafs.woff2")):
         f = TTFont(src); f.flavor = "woff2"; f.save(f"{fonts}/{dst}")
     # fingerprint of the fonts for the service worker (a cached font is replaced only when the fonts change)
     import hashlib
-    hsh = hashlib.sha256()
+    hsh = hashlib.sha256(b"unhinted-1")
     for n in range(1, 605): hsh.update(open(f"{D}/fonts2/p{n:03d}.woff2", "rb").read())
     for src in (f"{D}/fonts2/bsml.ttf", f"{D}/fonts2/hafs_v22.ttf"): hsh.update(open(src, "rb").read())
     sw = os.path.join(OUT, "sw.js")

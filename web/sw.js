@@ -1,6 +1,9 @@
 // Offline support: the app shell is cached per version; Quran data and fonts are cached the first time they are used
 // (or all at once from Settings → «تنزيل المصحف»), and then served from the phone.
 const VERSION = '__VERSION__';
+// fingerprint of the page fonts: a font is fetched again only when the fonts themselves change. Each page's glyph codes
+// must come from the same edition as its font, or the page draws as broken shapes.
+const FONTS = '__FONTS__';
 const SHELL = `mushaf-shell-${VERSION}`;
 const DATA = 'mushaf-data';
 const SHELL_FILES = ['./', 'index.html', 'css/app.css', 'js/app.js', 'js/core.js', 'js/tools.js', 'js/prayer.js', 'js/extra.js', 'js/surahs.js', 'js/tadabbur.js',
@@ -22,11 +25,12 @@ self.addEventListener('fetch', (e) => {
     // update, data from an older version is fetched again once (corrections reach everyone), and still served if offline.
     e.respondWith(caches.open(DATA).then(async (c) => {
       const hit = await c.match(e.request);
-      if (hit && (url.pathname.includes('/fonts/') || hit.headers.get('x-mushaf-v') === VERSION)) return hit;
+      const want = url.pathname.includes('/fonts/') ? FONTS : VERSION;
+      if (hit && hit.headers.get('x-mushaf-v') === want) return hit;
       try {
         const res = await fetch(e.request, { cache: 'no-cache' });
         if (res.ok) {
-          const h = new Headers(res.headers); h.set('x-mushaf-v', VERSION);
+          const h = new Headers(res.headers); h.set('x-mushaf-v', want);
           c.put(e.request, new Response(await res.clone().blob(), { status: res.status, statusText: res.statusText, headers: h }));
         }
         return res;

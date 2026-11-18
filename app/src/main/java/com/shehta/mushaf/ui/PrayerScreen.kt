@@ -139,7 +139,7 @@ private fun PrayerTracker(mp: MuslimPrefs, c: MushafColors) {
     val fmt = SimpleDateFormat("yyyy-MM-dd", Locale.US)
     val dayName = SimpleDateFormat("EEEE", Locale("ar"))
     val names = listOf("الفجر", "الظهر", "العصر", "المغرب", "العشاء")
-    LazyColumn(state = keptListState("prayer"), Modifier.padding(horizontal = 12.dp)) {
+    LazyColumn(Modifier.padding(horizontal = 12.dp), state = keptListState("prayer")) {
         item {
             Text("علّم الصلوات التي أدّيتها", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
             Row(Modifier.fillMaxWidth().padding(start = 90.dp)) {

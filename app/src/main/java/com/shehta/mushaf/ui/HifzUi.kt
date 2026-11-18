@@ -120,7 +120,7 @@ fun HifzScreen(prefs: Prefs, onBack: () -> Unit, onGo: (Int, Selection?) -> Unit
 @Composable
 private fun Progress(prefs: Prefs, c: MushafColors, onGo: (Int, Selection?) -> Unit, onStartHifz: () -> Unit) {
     val mem = prefs.memorized
-    LazyColumn(state = keptListState("hifz"), Modifier.padding(horizontal = 16.dp)) {
+    LazyColumn(Modifier.padding(horizontal = 16.dp), state = keptListState("hifz")) {
         item {
             Column(Modifier.padding(vertical = 14.dp)) {
                 Text("${mem.size.ar()} صفحة محفوظة من ٦٠٤", fontSize = 20.sp, fontWeight = FontWeight.Bold)

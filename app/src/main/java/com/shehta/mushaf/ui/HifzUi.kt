@@ -1,5 +1,7 @@
 package com.shehta.mushaf.ui
 
+import androidx.compose.runtime.saveable.rememberSaveable
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -93,7 +95,7 @@ private fun HBtn(t: String, onClick: () -> Unit) = TextButton(onClick = onClick)
 fun HifzScreen(prefs: Prefs, onBack: () -> Unit, onGo: (Int, Selection?) -> Unit, onStartHifz: () -> Unit) {
     BackHandler(onBack = onBack)
     val c = mushafColors(prefs.theme)
-    var tab by remember { mutableIntStateOf(0) }
+    var tab by rememberSaveable { mutableIntStateOf(0) }
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.fillMaxSize()) {
             Surface(color = c.bar, contentColor = c.onBar) {
@@ -118,7 +120,7 @@ fun HifzScreen(prefs: Prefs, onBack: () -> Unit, onGo: (Int, Selection?) -> Unit
 @Composable
 private fun Progress(prefs: Prefs, c: MushafColors, onGo: (Int, Selection?) -> Unit, onStartHifz: () -> Unit) {
     val mem = prefs.memorized
-    LazyColumn(Modifier.padding(horizontal = 16.dp)) {
+    LazyColumn(state = keptListState("hifz"), Modifier.padding(horizontal = 16.dp)) {
         item {
             Column(Modifier.padding(vertical = 14.dp)) {
                 Text("${mem.size.ar()} صفحة محفوظة من ٦٠٤", fontSize = 20.sp, fontWeight = FontWeight.Bold)

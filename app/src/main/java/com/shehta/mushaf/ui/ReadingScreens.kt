@@ -156,7 +156,7 @@ fun TadabburCard(c: MushafColors, item: RItem, onDismiss: () -> Unit, modifier: 
 @Composable
 fun VirtuesScreen(c: MushafColors, onBack: () -> Unit, onGo: (Int, Int) -> Unit, onIntentions: () -> Unit) {
     ScreenScaffold("فضل القرآن", c, onBack, subtitle = "قراءته وحفظه وتعلّمه والعمل به") {
-        LazyColumn(contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyColumn(state = keptListState("virtues"), contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 Card2(c, Modifier.clickable(onClick = onIntentions)) {
                     Text("نوايا قبل القراءة ›", fontWeight = FontWeight.Bold, fontSize = 17.sp, color = c.gharib)
@@ -192,7 +192,7 @@ fun HadithLibraryScreen(c: MushafColors, onBack: () -> Unit) {
     val g = groups.getOrNull(group)
     if (g == null) {
         ScreenScaffold("الأحاديث المشروحة", c, onBack, subtitle = "كل حديث صحيح أو حسن، ومعه شرحه وفوائده") {
-            LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyColumn(state = keptListState("hadiths"), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(groups.size) { i ->
                     val x = groups[i]
                     Card2(c, Modifier.clickable { group = i; q = "" }) {
@@ -215,7 +215,7 @@ fun HadithLibraryScreen(c: MushafColors, onBack: () -> Unit) {
         if (nq.length < 2) g.items.indices.toList() else g.items.indices.filter { norm[it].contains(nq) }
     }
     ScreenScaffold(g.title, c, onBack = { group = -1 }, subtitle = "${g.items.size.ar()} حديثًا مع الشرح") {
-        LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyColumn(state = keptListState("hadiths:$group"), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth(), singleLine = true,
                     placeholder = { Text("ابحث بكلمة من الحديث") }, leadingIcon = { Icon(Icons.Filled.Search, null) })

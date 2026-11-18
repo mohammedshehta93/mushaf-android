@@ -106,7 +106,7 @@ private fun RadiosTab(c: MushafColors) {
         return
     }
     val shown = remember(filter) { if (filter.isBlank()) radios else radios.filter { it.name.contains(filter.trim()) } }
-    LazyColumn(Modifier.fillMaxWidth(), contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    LazyColumn(state = keptListState("listen:radios"), Modifier.fillMaxWidth(), contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             OutlinedTextField(filter, { filter = it }, Modifier.fillMaxWidth(), singleLine = true,
                 placeholder = { Text("ابحث باسم القارئ أو الإذاعة") }, leadingIcon = { Icon(Icons.Filled.Search, null) })
@@ -124,12 +124,15 @@ private fun RadiosTab(c: MushafColors) {
     }
 }
 
+private object PodcastMemory { val query = HashMap<Boolean, String>(); val results = HashMap<Boolean, List<Podcast>>() }
+
 @Composable
 internal fun PodcastsTab(c: MushafColors, lp: ListenPrefs, initial: String?, onOpen: (Podcast) -> Unit,
                          groups: List<com.shehta.mushaf.data.Group<com.shehta.mushaf.data.Topic>>? = null, english: Boolean = false) {
     val scope = rememberCoroutineScope()
-    var query by rememberSaveable { mutableStateOf("") }
-    var results by remember { mutableStateOf<List<Podcast>?>(null) }
+    // the last search is kept, so coming back from a podcast's episodes shows the same results at the same place
+    var query by remember { mutableStateOf(PodcastMemory.query[english] ?: "") }
+    var results by remember { mutableStateOf(PodcastMemory.results[english]) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
@@ -137,14 +140,20 @@ internal fun PodcastsTab(c: MushafColors, lp: ListenPrefs, initial: String?, onO
         if (q.isBlank()) return
         query = q; loading = true; error = null
         scope.launch {
-            try { results = withContext(Dispatchers.IO) { Listen.searchPodcasts(q) } }
+            try {
+                results = withContext(Dispatchers.IO) { Listen.searchPodcasts(q) }
+                PodcastMemory.query[english] = q; results?.let { PodcastMemory.results[english] = it }
+            }
             catch (e: Exception) { error = "تعذّر البحث. تأكد من الاتصال بالإنترنت." }
             loading = false
         }
     }
-    LaunchedEffect(initial) { val q0 = initial; if (q0 != null && q0.isNotBlank() && results == null) search(q0) }
+    LaunchedEffect(initial) {
+        val q0 = initial
+        if (q0 != null && q0.isNotBlank() && (results == null || PodcastMemory.query[english] != q0)) search(q0)
+    }
 
-    LazyColumn(Modifier.fillMaxWidth(), contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    LazyColumn(state = keptListState(if (english) "en:podcasts" else "listen:podcasts"), Modifier.fillMaxWidth(), contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), singleLine = true,
                 placeholder = { Text(if (english) "Search podcasts" else "ابحث عن بودكاست ديني") }, leadingIcon = { Icon(Icons.Filled.Search, null) },
@@ -211,7 +220,7 @@ internal fun EpisodesList(c: MushafColors, lp: ListenPrefs, p: Podcast) {
         error -> Centered { Text("تعذّر تحميل الحلقات. تأكد من الاتصال بالإنترنت.", color = c.mistake, modifier = Modifier.padding(24.dp)) }
         eps == null -> Centered { CircularProgressIndicator() }
         eps!!.isEmpty() -> Centered { Text("لا توجد حلقات صوتية.", color = c.muted) }
-        else -> LazyColumn(Modifier.fillMaxWidth(), contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        else -> LazyColumn(state = keptListState("listen:eps:" + p.feed), Modifier.fillMaxWidth(), contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
                 TextButton(onClick = { lp.toggle(p) }) { Text(if (lp.isSubscribed(p.feed)) "♥ مشترك — اضغط للإلغاء" else "♡ اشترك في هذا البرنامج") }
             }
@@ -281,7 +290,7 @@ private fun PoemsAudioTab(c: MushafColors, lp: ListenPrefs) {
         Centered { Text("لا توجد تسجيلات صوتية بعد.", color = c.muted, modifier = Modifier.padding(24.dp)) }
         return
     }
-    LazyColumn(Modifier.fillMaxWidth(), contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    LazyColumn(state = keptListState("listen:poems"), Modifier.fillMaxWidth(), contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item { Text("قصائد ومتون مُلقاة بالصوت تُشغَّل داخل التطبيق، وتكمل من حيث توقفت.", fontSize = 12.sp, color = c.muted) }
         groups.forEach { (title, items) ->
             item { Text(title, fontWeight = FontWeight.Bold, color = c.gharib, modifier = Modifier.padding(top = 6.dp)) }

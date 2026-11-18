@@ -69,3 +69,14 @@ fun Card2(c: MushafColors, modifier: Modifier = Modifier, content: @Composable C
 
 @Composable
 fun Centered(content: @Composable () -> Unit) = Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { content() }
+
+
+/**
+ * A list's scroll position that outlives the screen: going into an item and coming back (inside a screen or
+ * between screens) shows the list where the reader left it.
+ */
+object KeptLists { internal val states = HashMap<String, androidx.compose.foundation.lazy.LazyListState>() }
+
+@Composable
+fun keptListState(key: String): androidx.compose.foundation.lazy.LazyListState =
+    androidx.compose.runtime.remember(key) { KeptLists.states.getOrPut(key) { androidx.compose.foundation.lazy.LazyListState() } }

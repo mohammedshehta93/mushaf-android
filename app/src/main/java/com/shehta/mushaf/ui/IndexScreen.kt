@@ -1,5 +1,7 @@
 package com.shehta.mushaf.ui
 
+import androidx.compose.runtime.saveable.rememberSaveable
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable

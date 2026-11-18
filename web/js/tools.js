@@ -94,9 +94,9 @@ export function openHome() {
             : '<b>مواقيت الصلاة</b><div class="muted">اضغط لتحديد موقعك وعرض المواقيت.</div>'}
         </button>
         <button class="card row" style="width:100%" data-azkar="${az[0]}"><span style="font-size:22px">${az[1]}</span><b class="grow" style="text-align:right">${az[0]}</b><span style="color:var(--gharib)">ابدأ ›</span></button>
-        ${friday ? '<button class="card" style="display:block;width:100%;text-align:right" data-kahf><b>يوم الجمعة</b><div>اقرأ سورة الكهف وأكثِر من الصلاة على النبي ﷺ — اضغط لفتح السورة.</div></button>' : ''}
-        <div class="card" data-hadith></div>
-        ${HOME_SECTIONS.map(([title, tiles]) => `<div class="sec-title">${title}</div><div class="grid g4">${tiles.map(([id, ic, l]) => `<button class="tile" data-go="${id}"><span>${ic}</span>${l}</button>`).join('')}</div>`).join('')}`;
+        ${HOME_SECTIONS.map(([title, tiles]) => `<div class="sec-title">${title}</div><div class="grid g4">${tiles.map(([id, ic, l]) => `<button class="tile" data-go="${id}"><span>${ic}</span>${l}</button>`).join('')}</div>`).join('')}
+        ${friday ? '<button class="card" style="display:block;width:100%;text-align:right;margin-top:12px" data-kahf><b>يوم الجمعة</b><div>اقرأ سورة الكهف وأكثِر من الصلاة على النبي ﷺ — اضغط لفتح السورة.</div></button>' : ''}
+        <div class="card" data-hadith style="margin-top:12px"></div>`;
       let off = 0;
       const list = await json('data/muslim/hadith_daily.json');
       const drawHadith = () => {

@@ -1,5 +1,7 @@
 package com.shehta.mushaf.ui
 
+import androidx.compose.runtime.saveable.rememberSaveable
+
 import android.Manifest
 import android.app.AlarmManager
 import android.content.Context
@@ -87,7 +89,7 @@ fun countdown(ms: Long): String {
 @Composable
 fun PrayerScreen(mp: MuslimPrefs, c: MushafColors, onBack: () -> Unit, startTab: Int = 0) {
     val context = LocalContext.current
-    var tab by remember { mutableIntStateOf(if (!mp.hasLocation && startTab == 0) 2 else startTab) }
+    var tab by rememberSaveable { mutableIntStateOf(if (!mp.hasLocation && startTab == 0) 2 else startTab) }
     ScreenScaffold("مواقيت الصلاة", c, onBack, subtitle = if (mp.hasLocation) mp.cityName else "حدّد موقعك أولًا") {
         TabRow(selectedTabIndex = tab, containerColor = c.frameFill) {
             listOf("اليوم", "صلواتي", "الإعدادات").forEachIndexed { i, t -> Tab(tab == i, { tab = i }, text = { Text(t) }) }
@@ -137,7 +139,7 @@ private fun PrayerTracker(mp: MuslimPrefs, c: MushafColors) {
     val fmt = SimpleDateFormat("yyyy-MM-dd", Locale.US)
     val dayName = SimpleDateFormat("EEEE", Locale("ar"))
     val names = listOf("الفجر", "الظهر", "العصر", "المغرب", "العشاء")
-    LazyColumn(Modifier.padding(horizontal = 12.dp)) {
+    LazyColumn(state = keptListState("prayer"), Modifier.padding(horizontal = 12.dp)) {
         item {
             Text("علّم الصلوات التي أدّيتها", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
             Row(Modifier.fillMaxWidth().padding(start = 90.dp)) {

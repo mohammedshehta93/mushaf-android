@@ -55,7 +55,7 @@ fun AzkarScreen(mp: MuslimPrefs, c: MushafColors, start: String?, onBack: () -> 
     val all = remember { MuslimData.azkar() }
     val featured = listOf(MuslimData.MORNING, MuslimData.EVENING, MuslimData.AFTER_PRAYER, MuslimData.SLEEP, MuslimData.WAKING)
     ScreenScaffold("الأذكار", c, onBack, subtitle = "حصن المسلم") {
-        LazyColumn(contentPadding = PaddingValues(12.dp)) {
+        LazyColumn(state = keptListState("azkar"), contentPadding = PaddingValues(12.dp)) {
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     featured.take(3).forEach { t -> Tile(t, c, Modifier.weight(1f)) { open = t } }

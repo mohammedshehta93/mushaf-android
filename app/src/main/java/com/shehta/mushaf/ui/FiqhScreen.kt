@@ -1,5 +1,7 @@
 package com.shehta.mushaf.ui
 
+import androidx.compose.runtime.saveable.rememberSaveable
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -86,7 +88,7 @@ import kotlinx.coroutines.withContext
 fun FiqhScreen(prefs: Prefs, onBack: () -> Unit) {
     val c = mushafColors(prefs.theme)
     val books by produceState<List<FiqhBook>?>(null) { value = withContext(Dispatchers.IO) { Fiqh.books() } }
-    var tab by remember { mutableIntStateOf(0) }
+    var tab by rememberSaveable { mutableIntStateOf(0) }
     var openBook by remember { mutableStateOf<Int?>(null) }
     var openHadith by remember { mutableStateOf<List<Hadith>?>(null) }
     var openIndex by remember { mutableIntStateOf(0) }
@@ -157,7 +159,7 @@ private fun Empty(t: String, c: MushafColors) = Box(Modifier.fillMaxSize().paddi
 
 @Composable
 private fun BookList(books: List<FiqhBook>, prefs: Prefs, c: MushafColors, onOpen: (Int) -> Unit) {
-    LazyColumn(contentPadding = PaddingValues(vertical = 8.dp)) {
+    LazyColumn(state = keptListState("fiqh:books"), contentPadding = PaddingValues(vertical = 8.dp)) {
         item {
             Text("ابدأ بكتاب الطهارة ثم الصلاة؛ اقرأ كل حديث وتأمّل الحكم المستفاد منه، وعلّم ما حفظته. " +
                 "هذه الأداة لتعلّم أدلة الأحكام، ولمسائلك الخاصة اسأل أهل العلم.",
@@ -185,7 +187,7 @@ private fun BookList(books: List<FiqhBook>, prefs: Prefs, c: MushafColors, onOpe
 
 @Composable
 private fun HadithList(list: List<Hadith>, prefs: Prefs, c: MushafColors, onOpen: (List<Hadith>, Int) -> Unit) {
-    LazyColumn {
+    LazyColumn(state = keptListState("fiqh:list:" + list.firstOrNull()?.book + ":" + list.size)) {
         items(list.size) { i ->
             val h = list[i]
             Row(Modifier.fillMaxWidth().clickable { onOpen(list, i) }.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {

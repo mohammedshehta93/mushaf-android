@@ -42,7 +42,7 @@ fun SurahInfoScreen(c: MushafColors, start: Int = 0, onBack: () -> Unit, onGo: (
         (1..114).filter { n.isEmpty() || ArabicText.normalize(Quran.surahs[it - 1].name).contains(n) || it.toString() == q.trim() }
     }
     ScreenScaffold("مقاصد السور وأسباب النزول", c, onBack, subtitle = "موضوع كل سورة، وما صحّ في نزول آياتها") {
-        LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyColumn(state = keptListState("surahinfo"), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item { OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth(), singleLine = true, placeholder = { Text("اسم السورة أو رقمها") }) }
             items(shown.size) { i ->
                 val s = shown[i]

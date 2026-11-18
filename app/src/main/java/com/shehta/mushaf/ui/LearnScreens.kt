@@ -97,7 +97,7 @@ fun SheikhsScreen(c: MushafColors, onBack: () -> Unit, onPodcast: (String) -> Un
     val context = LocalContext.current
     var open by remember { mutableStateOf<Sheikh?>(null) }
     ScreenScaffold("الشيوخ والدروس", c, onBack, subtitle = "دروس صوتية داخل التطبيق، ومعها الفيديو على يوتيوب") {
-        LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        LazyColumn(state = keptListState("sheikhs"), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             item { Text("اختر الشيخ لتسمع دروسه صوتًا داخل التطبيق، أو تشاهدها فيديو على يوتيوب. البحث في المواعظ والمقاطع القصيرة مقيّد بـ«بدون موسيقى».", fontSize = 13.sp, color = c.muted) }
             Learn.sheikhs.forEach { g ->
                 item { GroupTitle(g.title, c) }
@@ -134,7 +134,7 @@ fun PoemsScreen(c: MushafColors, lp: com.shehta.mushaf.data.ListenPrefs, onBack:
     val context = LocalContext.current
     var open by remember { mutableStateOf<Poem?>(null) }
     ScreenScaffold("المتون والمنظومات", c, onBack, subtitle = "قصائد تعلّم العقيدة والآداب والتجويد والفقه") {
-        LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        LazyColumn(state = keptListState("poems"), Modifier.weight(1f), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             item { Text("مرتبة حسب العلم. اضغط على المنظومة لتسمعها داخل التطبيق أو تسمع شرحها أو تقرأ نصها. 🎧 = لها تسجيل صوتي.", fontSize = 13.sp, color = c.muted) }
             Learn.poems.forEach { g ->
                 item { GroupTitle(g.title, c) }

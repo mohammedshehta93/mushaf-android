@@ -1,5 +1,7 @@
 package com.shehta.mushaf.ui
 
+import androidx.compose.runtime.saveable.rememberSaveable
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -143,7 +145,7 @@ fun RamadanScreen(mp: MuslimPrefs, prefs: Prefs, c: MushafColors, onBack: () -> 
     val today = remember(adj) { Hijri.today(adj) }
     val year = if (today.month <= 9 || (today.month == 10 && today.day == 1)) today.year else today.year + 1
     val start = remember(adj, year) { Hijri.toGregorian(HijriDate(year, 9, 1), adj) }
-    var tab by remember { mutableIntStateOf(0) }
+    var tab by rememberSaveable { mutableIntStateOf(0) }
     ScreenScaffold("رمضان ${year.ar()}هـ", c, onBack, subtitle = start?.let { "يبدأ تقريبًا " + SimpleDateFormat("EEEE d MMMM yyyy", Locale("ar")).format(it) }) {
         TabRow(selectedTabIndex = tab, containerColor = c.frameFill) {
             listOf("الإمساكية", "صيامي وقيامي", "ختمة رمضان").forEachIndexed { i, t -> Tab(tab == i, { tab = i }, text = { Text(t) }) }
@@ -285,7 +287,7 @@ fun NamesScreen(c: MushafColors, onBack: () -> Unit, onGo: (Int, Int) -> Unit) {
     val names = remember { MuslimData.names() }
     var open by remember { mutableStateOf<Int?>(null) }
     ScreenScaffold("أسماء الله الحسنى", c, onBack, subtitle = "«ولله الأسماء الحسنى فادعوه بها»") {
-        LazyColumn(contentPadding = PaddingValues(12.dp)) {
+        LazyColumn(state = keptListState("names"), contentPadding = PaddingValues(12.dp)) {
             item { Text("قال النبي ﷺ: «إِنَّ لِلَّهِ تِسْعَةً وَتِسْعِينَ اسْمًا مِائَةً إِلاَّ وَاحِدًا، مَنْ أَحْصَاهَا دَخَلَ الْجَنَّةَ» (صحيح البخاري 7392). أما سرد الأسماء بهذا الترتيب فهو في جامع الترمذي (3507) وإسناده ضعيف (الألباني)، ولم يثبت تعيينها في حديث صحيح. والآيات تحت كل اسم: مواضع الاسم أو ما دلّ على معناه.", fontSize = 13.sp, lineHeight = 22.sp, color = c.muted, modifier = Modifier.padding(bottom = 8.dp)) }
             items(names.size) { i ->
                 val n = names[i]

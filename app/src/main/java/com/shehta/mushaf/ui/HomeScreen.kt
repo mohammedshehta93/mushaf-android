@@ -91,7 +91,7 @@ fun HomeScreen(mp: MuslimPrefs, c: MushafColors, lastPage: Int, onBack: (() -> U
     val hourNow = cal.get(Calendar.HOUR_OF_DAY) + cal.get(Calendar.MINUTE) / 60.0
 
     ScreenScaffold("تِبيان", c, onBack, subtitle = "$hijri · ${SimpleDateFormat("EEEE d MMMM yyyy", Locale("ar")).format(Date(now))}") {
-        LazyColumn(contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        LazyColumn(state = keptListState("home"), contentPadding = PaddingValues(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             // ---- the Mushaf first: continue reading where the reader stopped
             item {
                 Card2(c, Modifier.clickable { onPick("mushaf") }) {
@@ -150,44 +150,7 @@ fun HomeScreen(mp: MuslimPrefs, c: MushafColors, lastPage: Int, onBack: (() -> U
                     }
                 }
             }
-            // ---- Friday & occasions
-            item {
-                val friday = cal.get(Calendar.DAY_OF_WEEK) == Calendar.FRIDAY
-                val soon = Hijri.OCCASIONS.firstOrNull { it.month == hijri.month && it.day in hijri.day..hijri.day + 2 }
-                if (friday) Card2(c, Modifier.clickable { onPick("kahf") }) {
-                    Text("يوم الجمعة", fontWeight = FontWeight.Bold)
-                    Text("اقرأ سورة الكهف وأكثِر من الصلاة على النبي ﷺ — اضغط لفتح السورة.", fontSize = 14.sp)
-                }
-                if (soon != null) Card2(c, Modifier.padding(top = if (friday) 8.dp else 0.dp).clickable { onPick("hijri") }) {
-                    Text(if (soon.day == hijri.day) "اليوم: ${soon.title}" else "قريبًا: ${soon.title}", fontWeight = FontWeight.Bold)
-                    if (soon.note.isNotEmpty()) Text(soon.note, fontSize = 14.sp, color = c.muted)
-                } else if (Hijri.isWhiteDay(hijri) || hijri.day == 12) Card2(c, Modifier.padding(top = if (friday) 8.dp else 0.dp)) {
-                    Text(if (hijri.day == 12) "غدًا أول الأيام البيض (١٣–١٥)" else "من الأيام البيض — يُستحب صيامها", fontWeight = FontWeight.SemiBold)
-                }
-            }
-            // ---- memorisation review due today
-            item {
-                val due = remember { com.shehta.mushaf.data.ReviewPlan(context).due() }
-                if (due.isNotEmpty()) Card2(c, Modifier.clickable { onPick("review") }) {
-                    Text("مراجعة الحفظ اليوم: ${due.size.ar()} صفحة", fontWeight = FontWeight.Bold, color = c.gharib)
-                    Text("سمّعها الآن — اضغط للبدء", fontSize = 13.sp, color = c.muted)
-                }
-            }
-            // ---- hadith of the day
-            item {
-                val h = MuslimData.hadithOfDay(hadithOffset)
-                Card2(c) {
-                    Text("حديث اليوم", fontWeight = FontWeight.Bold, color = c.gharib)
-                    HadithBody(c, h)
-                    Row {
-                        TextButton(onClick = { hadithOffset++ }) { Text("حديث آخر") }
-                        TextButton(onClick = {
-                            context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, "${h.text}\n— ${h.source}"), "مشاركة"))
-                        }) { Text("مشاركة") }
-                    }
-                }
-            }
-            // ---- every tool, grouped so nothing gets lost
+            // ---- every section right after the Mushaf, prayer and azkar (high on the page, not at the bottom)
             val sections: List<Pair<String, List<Triple<String, ImageVector, String>>>> = listOf(
                 "القرآن الكريم" to listOf(
                     Triple("virtues", Icons.Filled.Favorite, "فضل القرآن"),
@@ -250,6 +213,43 @@ fun HomeScreen(mp: MuslimPrefs, c: MushafColors, lastPage: Int, onBack: (() -> U
                                 repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
                             }
                         }
+                    }
+                }
+            }
+            // ---- Friday & occasions
+            item {
+                val friday = cal.get(Calendar.DAY_OF_WEEK) == Calendar.FRIDAY
+                val soon = Hijri.OCCASIONS.firstOrNull { it.month == hijri.month && it.day in hijri.day..hijri.day + 2 }
+                if (friday) Card2(c, Modifier.clickable { onPick("kahf") }) {
+                    Text("يوم الجمعة", fontWeight = FontWeight.Bold)
+                    Text("اقرأ سورة الكهف وأكثِر من الصلاة على النبي ﷺ — اضغط لفتح السورة.", fontSize = 14.sp)
+                }
+                if (soon != null) Card2(c, Modifier.padding(top = if (friday) 8.dp else 0.dp).clickable { onPick("hijri") }) {
+                    Text(if (soon.day == hijri.day) "اليوم: ${soon.title}" else "قريبًا: ${soon.title}", fontWeight = FontWeight.Bold)
+                    if (soon.note.isNotEmpty()) Text(soon.note, fontSize = 14.sp, color = c.muted)
+                } else if (Hijri.isWhiteDay(hijri) || hijri.day == 12) Card2(c, Modifier.padding(top = if (friday) 8.dp else 0.dp)) {
+                    Text(if (hijri.day == 12) "غدًا أول الأيام البيض (١٣–١٥)" else "من الأيام البيض — يُستحب صيامها", fontWeight = FontWeight.SemiBold)
+                }
+            }
+            // ---- memorisation review due today
+            item {
+                val due = remember { com.shehta.mushaf.data.ReviewPlan(context).due() }
+                if (due.isNotEmpty()) Card2(c, Modifier.clickable { onPick("review") }) {
+                    Text("مراجعة الحفظ اليوم: ${due.size.ar()} صفحة", fontWeight = FontWeight.Bold, color = c.gharib)
+                    Text("سمّعها الآن — اضغط للبدء", fontSize = 13.sp, color = c.muted)
+                }
+            }
+            // ---- hadith of the day
+            item {
+                val h = MuslimData.hadithOfDay(hadithOffset)
+                Card2(c) {
+                    Text("حديث اليوم", fontWeight = FontWeight.Bold, color = c.gharib)
+                    HadithBody(c, h)
+                    Row {
+                        TextButton(onClick = { hadithOffset++ }) { Text("حديث آخر") }
+                        TextButton(onClick = {
+                            context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, "${h.text}\n— ${h.source}"), "مشاركة"))
+                        }) { Text("مشاركة") }
                     }
                 }
             }

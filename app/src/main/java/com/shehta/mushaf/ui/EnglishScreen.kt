@@ -118,7 +118,7 @@ private fun open(context: android.content.Context, url: String) {
 
 @Composable
 private fun SurahList(c: MushafColors, onPick: (Int) -> Unit) {
-    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    LazyColumn(state = keptListState("en:surahs"), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         item { Text("The meaning of the Quran in English — Saheeh International translation. The Arabic is the official text of the King Fahd Complex.", fontSize = 13.sp, color = c.muted) }
         items(Quran.surahs) { s ->
             Card2(c, Modifier.clickable { onPick(s.n) }) {
@@ -155,7 +155,7 @@ private fun SurahTranslation(c: MushafColors, s: Int, onGo: (Int, Int) -> Unit) 
 @Composable
 private fun EnHadith(c: MushafColors) {
     val list = EnglishData.hadiths
-    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    LazyColumn(state = keptListState("en:hadith"), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item { Text("Authentic hadith with explanation, lessons and word meanings (HadeethEnc.com).", fontSize = 13.sp, color = c.muted) }
         items(list) { h ->
             var open by remember(h.text) { mutableStateOf(false) }
@@ -189,7 +189,7 @@ private fun EnHadith(c: MushafColors) {
 private fun EnSpeakers(c: MushafColors, onPodcast: (String) -> Unit) {
     val context = LocalContext.current
     var sel by remember { mutableStateOf<Sheikh?>(null) }
-    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    LazyColumn(state = keptListState("en:speakers"), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         item { Text("Choose a speaker, then the kind of content. Videos open on YouTube.", fontSize = 13.sp, color = c.muted) }
         items(Learn.enSpeakers) { s ->
             Card2(c, Modifier.clickable { sel = s }) {
@@ -228,7 +228,7 @@ private fun EnAction(c: MushafColors, icon: androidx.compose.ui.graphics.vector.
 @Composable
 private fun EnSeries(c: MushafColors) {
     val context = LocalContext.current
-    LazyColumn(contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    LazyColumn(state = keptListState("en:series"), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         item { Text("Step-by-step learning: for new Muslims, prayer, reading the Quran, Seerah and belief. Each opens complete playlists on YouTube.", fontSize = 13.sp, color = c.muted) }
         Learn.enSeries.forEach { g ->
             item { Text(g.title, fontWeight = FontWeight.Bold, color = c.gharib, fontSize = 17.sp, modifier = Modifier.padding(top = 8.dp)) }

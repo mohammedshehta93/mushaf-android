@@ -185,7 +185,6 @@ fun HomeScreen(mp: MuslimPrefs, c: MushafColors, lastPage: Int, onBack: (() -> U
                 "استمع" to listOf(
                     Triple("radio", Icons.Filled.Radio, "إذاعات القرآن"),
                     Triple("podcast", Icons.Filled.Podcasts, "بودكاست"),
-                    Triple("nasheed", Icons.Filled.Headphones, "قصائد ومتون صوتية"),
                 ),
                 "English" to listOf(
                     Triple("english", Icons.Filled.Language, "English corner\nللمسلمين الأجانب"),

@@ -642,5 +642,10 @@ def attach_daily_sharh(OUT, sharh_items, D=None):
         for d in daily:
             sh = idx.find(d["t"])
             if sh: d.update({"x": sh["x"], "hl": sh["h"], "w": sh["w"]})
+    seen, uniq = set(), []                      # the same hadith only once (some are in the list twice)
+    for d in daily:
+        k = re.sub("[^ء-ي]", "", re.sub("[\u064b-\u0652]", "", d["t"]))[:100]
+        if k not in seen: seen.add(k); uniq.append(d)
+    daily = uniq
     json.dump(daily, open(path, "w", encoding="utf-8"), ensure_ascii=False, separators=(",", ":"))
     print("hadith of the day:", len(daily), "· with explanation:", sum(1 for d in daily if d.get("x")))

@@ -247,9 +247,14 @@ class MuslimPrefs(context: Context) {
     }
 
     // azkar progress of today: "category#index" -> remaining count
-    private var azkarDay = sp.getString("azkarDay", "") ?: ""
+    // both are observed state: the screen must redraw when either changes (a plain day field was not observed, so on
+    // the first tap of a new day the counter did not move)
+    private var azkarDay by mutableStateOf(sp.getString("azkarDay", "") ?: "")
     var azkarDone by mutableStateOf(if (azkarDay == today()) readMap("azkarDone") else emptyMap()); private set
-    fun azkarCount(cat: String, i: Int, total: Int): Int = if (azkarDay == today()) azkarDone["$cat#$i"] ?: 0 else 0
+    fun azkarCount(cat: String, i: Int, total: Int): Int {
+        val done = azkarDone["$cat#$i"] ?: 0           // read first, so the screen always follows this state
+        return if (azkarDay == today()) done else 0
+    }
     fun azkarTap(cat: String, i: Int) {
         if (azkarDay != today()) azkarDone = emptyMap()          // a new day: everything starts again
         val k = "$cat#$i"

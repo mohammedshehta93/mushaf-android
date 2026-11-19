@@ -225,7 +225,6 @@ fun App(prefs: Prefs, mp: MuslimPrefs) {
     var noteFor by remember { mutableStateOf<Selection?>(null) }
     var playerFor by remember { mutableStateOf<IntArray?>(null) }
     var showSettings by remember { mutableStateOf(false) }
-    var showMore by remember { mutableStateOf(false) }
     var showView by remember { mutableStateOf(false) }
     var showShare by remember { mutableStateOf(false) }
     var hifzOn by remember { mutableStateOf(false) }
@@ -662,23 +661,6 @@ fun App(prefs: Prefs, mp: MuslimPrefs) {
     if (showSettings) SettingsSheet(prefs, mp, onDismiss = { showSettings = false })
     if (showView) ViewSheet(prefs, colors, onDismiss = { showView = false })
     if (showShare) ShareAppSheet(onDismiss = { showShare = false })
-    if (showMore) MoreSheet(
-        onDismiss = { showMore = false },
-        onPick = { what ->
-            showMore = false; barsVisible = false
-            when (what) {
-                "search" -> open(Overlay.Search)
-                "marks" -> { IndexTabs.request = 3; open(Overlay.Index) }
-                "notes" -> { IndexTabs.request = 4; open(Overlay.Index) }
-                "khatma" -> open(Overlay.Khatma)
-                "hifz" -> open(Overlay.Hifz)
-                "fiqh" -> open(Overlay.Fiqh)
-                "tafsir" -> { val fa = Quran.firstAyah(current); open(Overlay.Tafsir(fa[0], fa[1])) }
-                "settings" -> showSettings = true
-                "share" -> showShare = true
-            }
-        },
-    )
     UpdateDialog(prefs)
 }
 
@@ -713,41 +695,6 @@ private fun BarButton(icon: ImageVector, label: String, onClick: () -> Unit) {
     }
 }
 
-/** "More": everything that is not needed on every page. */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun MoreSheet(onDismiss: () -> Unit, onPick: (String) -> Unit) {
-    val items = listOf(
-        Triple("search", Icons.Filled.Search, "البحث في القرآن"),
-        Triple("tafsir", Icons.Filled.AutoStories, "التفسير"),
-        Triple("khatma", Icons.Filled.CalendarMonth, "الختمة والورد"),
-        Triple("hifz", Icons.Filled.Psychology, "الحفظ والمراجعة"),
-        Triple("fiqh", Icons.Filled.Gavel, "تعلّم الفقه"),
-        Triple("marks", Icons.Filled.Bookmarks, "العلامات"),
-        Triple("notes", Icons.Filled.EditNote, "دفتر التدبّر"),
-        Triple("share", Icons.Filled.Share, "شارك التطبيق"),
-        Triple("settings", Icons.Filled.Settings, "الإعدادات"),
-    )
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(Modifier.padding(horizontal = 12.dp).padding(bottom = 24.dp)) {
-            items.chunked(4).forEach { row ->
-                Row(Modifier.fillMaxWidth()) {
-                    row.forEach { (id, icon, label) ->
-                        Column(
-                            Modifier.weight(1f).clickable { onPick(id) }.padding(vertical = 14.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                        ) {
-                            Box(Modifier.size(52.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), CircleShape), contentAlignment = Alignment.Center) {
-                                Icon(icon, label, tint = MaterialTheme.colorScheme.primary)
-                            }
-                            Text(label, fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 6.dp))
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
 
 /** Display mode + tajweed colour legend. */
 @OptIn(ExperimentalMaterial3Api::class)
